@@ -1,0 +1,32 @@
+{
+  "name": "dubber-project",
+  "version": "1.0.0",
+  "description": "Professional Dubber Project with Express, Tailwind CSS, and Vanilla JS",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "nodemon src/server.js",
+    "build:css": "npx @tailwindcss/cli -i ./public/css/input.css -o ./public/css/output.css --minify",
+    "watch:css": "npx @tailwindcss/cli -i ./public/css/input.css -o ./public/css/output.css --watch"
+  },
+  "keywords": [
+    "dubber",
+    "express",
+    "tailwind",
+    "nodejs"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "cors": "^2.8.6",
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1"
+  },
+  "devDependencies": {
+    "@tailwindcss/cli": "^4.3.3",
+    "autoprefixer": "^10.6.0",
+    "nodemon": "^3.1.14",
+    "postcss": "^8.5.28",
+    "tailwindcss": "^4.3.3"
+  }
+}
