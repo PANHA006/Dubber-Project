@@ -151,7 +151,8 @@ window.startTranscription = async function() {
             end: endStr,
             startSec: startSec,
             endSec: endSec,
-            khmerText: item.text || '',
+            originalText: item.originalText || item.text || '',
+            khmerText: item.khmerText || item.text || '',
             voice: speaker.includes('Female') ? 'Sreymom (Female)' : 'Piseth (Male)',
             status: 'Ready'
           };

@@ -117,16 +117,36 @@ if (keyManager.keyStates[keyDenied] && keyManager.keyStates[keyDenied].status ==
   failed++;
 }
 
+// Test 9: 503 Error marks key with temporary 60s COOLDOWN
+console.log('\n9. Testing 503 Error marks key with COOLDOWN (60s) and fails over...');
+const mock503Error = {
+  message: 'This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later.',
+  status: 'UNAVAILABLE',
+  error: { code: 503 }
+};
+const key503 = 'AIzaSyTest_503ServerCongestedKey';
+const keyFresh = 'AIzaSyTest_FreshHealthyKey_Z';
+
+const result503 = keyManager.markKeyExhausted(key503, mock503Error);
+if (result503.is503 === true && result503.status === 'COOLDOWN' && result503.waitDurationSec === 60) {
+  console.log('   ✅ PASS: 503 correctly triggered 60s COOLDOWN');
+} else {
+  console.error('   ❌ FAIL: 503 handling mismatch:', result503);
+  failed++;
+}
+
 // Cleanup test keys
 delete keyManager.keyStates[keyA];
 delete keyManager.keyStates[keyB];
 delete keyManager.keyStates[keyDenied];
 delete keyManager.keyStates[keyHealthy];
+delete keyManager.keyStates[key503];
+delete keyManager.keyStates[keyFresh];
 keyManager.saveState();
 
 console.log('\n=====================================================');
 if (failed === 0) {
-  console.log('🎉 ALL MULTI-KEY & 403/DENIED_ACCESS CHECKS PASSED (8/8)!\n');
+  console.log('🎉 ALL MULTI-KEY, 403, & 503 FAILOVER CHECKS PASSED (9/9)!\n');
 } else {
   console.error('⚠️ FAILED CHECKS: ' + failed + '\n');
   process.exit(1);

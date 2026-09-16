@@ -116,14 +116,17 @@ export function renderSubtitleTable() {
       <td class="py-2.5 px-3 text-center">
         <input type="checkbox" ${sub.selected ? 'checked' : ''} data-id="${sub.id}" class="sub-row-check rounded border-slate-700 bg-slate-800 text-indigo-600 focus:ring-0 focus:ring-offset-0 cursor-pointer" />
       </td>
-      <td class="py-2 px-2.5 font-mono text-slate-300 text-[11px] w-28">
+      <td class="py-2 px-2.5 font-mono text-slate-300 text-[11px] w-24">
         <input type="text" value="${sub.start}" data-field="start" data-id="${sub.id}" class="sub-time-input bg-transparent hover:bg-slate-800/80 focus:bg-slate-800 focus:border-indigo-500 border border-transparent rounded px-1.5 py-1 w-full font-mono outline-hidden text-xs" />
       </td>
-      <td class="py-2 px-2.5 font-mono text-slate-300 text-[11px] w-28">
+      <td class="py-2 px-2.5 font-mono text-slate-300 text-[11px] w-24">
         <input type="text" value="${sub.end}" data-field="end" data-id="${sub.id}" class="sub-time-input bg-transparent hover:bg-slate-800/80 focus:bg-slate-800 focus:border-indigo-500 border border-transparent rounded px-1.5 py-1 w-full font-mono outline-hidden text-xs" />
       </td>
+      <td class="py-2 px-3 text-slate-300 text-xs">
+        <input type="text" value="${escapeHtml(sub.originalText || '')}" data-id="${sub.id}" class="sub-original-text-input w-full bg-transparent hover:bg-slate-800/60 focus:bg-slate-800 focus:border-indigo-500/60 border border-transparent rounded px-2 py-1 outline-hidden text-slate-300 transition text-xs placeholder:text-slate-600" placeholder="Original speech..." />
+      </td>
       <td class="py-2 px-3 font-khmer text-slate-100 text-sm">
-        <input type="text" value="${escapeHtml(sub.khmerText)}" data-id="${sub.id}" class="sub-text-input w-full bg-transparent hover:bg-slate-800/60 focus:bg-slate-800 focus:border-indigo-500 border border-transparent rounded px-2 py-1 outline-hidden font-khmer transition text-sm" />
+        <input type="text" value="${escapeHtml(sub.khmerText || '')}" data-id="${sub.id}" class="sub-text-input w-full bg-transparent hover:bg-slate-800/60 focus:bg-slate-800 focus:border-indigo-500 border border-transparent rounded px-2 py-1 outline-hidden font-khmer transition text-sm" placeholder="បញ្ចូលអត្ថបទបកប្រែខ្មែរ..." />
       </td>
       <td class="py-2 px-3 w-36">
         <div class="relative">
@@ -134,7 +137,7 @@ export function renderSubtitleTable() {
           <svg class="w-3.5 h-3.5 text-slate-400 absolute right-2 top-2.5 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
         </div>
       </td>
-      <td class="py-2 px-3 w-28 text-center">
+      <td class="py-2 px-3 w-24 text-center">
         <span data-id="${sub.id}" class="sub-status-toggle cursor-pointer inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-medium transition ${
           isReady
             ? 'bg-emerald-950/40 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-900/40'
@@ -185,7 +188,19 @@ function attachTableEventListeners() {
     };
   });
 
-  // Text inputs
+  // Original text inputs
+  document.querySelectorAll('.sub-original-text-input').forEach(input => {
+    input.oninput = (e) => {
+      const id = e.target.getAttribute('data-id');
+      const sub = state.subtitles.find(s => s.id === id);
+      if (sub) {
+        sub.originalText = e.target.value;
+        state.emit('subtitlesChanged', state.subtitles);
+      }
+    };
+  });
+
+  // Khmer text inputs
   document.querySelectorAll('.sub-text-input').forEach(input => {
     input.oninput = (e) => {
       const id = e.target.getAttribute('data-id');
@@ -236,6 +251,7 @@ export function addNewSubtitleRow() {
     end: formatTimecodeSRT(endSec),
     startSec: startSec,
     endSec: endSec,
+    originalText: 'Original text (speech)',
     khmerText: 'អរគុណសម្រាប់ការទស្សនា (សូមបញ្ចូលអក្សរ)',
     voice: 'Piseth (Male)',
     status: 'Pending'
@@ -325,6 +341,7 @@ export function importSRTContent(content) {
           startSec: parseTimecodeSRT(start),
           endSec: parseTimecodeSRT(end),
           khmerText: text,
+          originalText: text,
           voice: 'Piseth (Male)',
           status: 'Ready'
         });

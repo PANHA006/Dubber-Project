@@ -137,6 +137,14 @@ async function runE2ETests() {
       );
 
       assert(
+        'Frontend has separate START, END, ORIGINAL TEXT, and KHMER TEXT table headers',
+        indexHtml.includes('>START</th>') &&
+        indexHtml.includes('>END</th>') &&
+        indexHtml.includes('>ORIGINAL TEXT</th>') &&
+        indexHtml.includes('>KHMER TEXT (EDITABLE)</th>')
+      );
+
+      assert(
         'Frontend has Gemini API Key settings input',
         indexHtml.includes('id="input-gemini-api-key"')
       );
@@ -211,6 +219,20 @@ async function runE2ETests() {
         'gemini.service.js enforces Acoustic Sentence Boundaries and BGM vocal isolation',
         geminiServiceCode.includes('Acoustic Sentence Boundaries') &&
         geminiServiceCode.includes('Foreground Vocal Isolation & BGM Filtering')
+      );
+
+      assert(
+        'gemini.service.js schema defines both originalText and khmerText in One-Pass',
+        geminiServiceCode.includes('originalText:') &&
+        geminiServiceCode.includes('khmerText:')
+      );
+
+      const subtitlesRes = await fetch(`${baseUrl}/js/subtitles.js`);
+      const subtitlesCode = await subtitlesRes.text();
+      assert(
+        'subtitles.js renders separate originalText and khmerText inputs',
+        subtitlesCode.includes('sub-original-text-input') &&
+        subtitlesCode.includes('sub-text-input')
       );
 
       // --- TEST 10: Smart Silence Auto-Chunking (09:30 - 10:30 Window) Integrity ---

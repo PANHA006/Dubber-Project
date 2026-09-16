@@ -25,6 +25,7 @@ class GeminiService {
     const effectiveMimeType = mimeType || 'audio/wav';
 
     let fileUpload = null;
+    let upload503Attempt = 0;
     while (!fileUpload) {
       try {
         formatTerminalLog('GEMINI:API', `Uploading audio to Google File API using Key [${activeKeyInfo.id}]...`, { file: path.basename(filePath) });
@@ -46,16 +47,30 @@ class GeminiService {
                          errStr.includes('403') ||
                          errStr.includes('API_KEY_INVALID') ||
                          errStr.includes('API key not valid');
+        const is503 = errStr.includes('503') ||
+                      errStr.includes('UNAVAILABLE') ||
+                      errStr.includes('high demand');
         const isRateLimit = errStr.includes('429') ||
                             errStr.includes('RESOURCE_EXHAUSTED') ||
                             errStr.includes('Quota exceeded');
 
-        if (isDenied || isRateLimit) {
+        // On 503 during upload, retry 4 times (5s, 10s, 15s, 20s) on the same key first!
+        if (is503 && upload503Attempt < 4) {
+          upload503Attempt++;
+          const delayMs = upload503Attempt * 5000;
+          formatTerminalLog('GEMINI:WARN', `Google 503 Server Congestion on upload using key [${activeKeyInfo.id}]. Retrying in ${delayMs / 1000}s (Attempt ${upload503Attempt}/4)...`);
+          await new Promise(r => setTimeout(r, delayMs));
+          continue; // Retry upload with the same key
+        }
+
+        if (isDenied || isRateLimit || is503) {
           const failover = keyManager.markKeyExhausted(activeKeyInfo.key, uploadErr);
           if (failover.isDenied) {
             formatTerminalLog('KEY:DENIED', `Key [${failover.keyId}] permanently blocked by Google (403 Permission Denied). Auto-skipped!`);
           } else if (failover.isDailyLocked) {
             formatTerminalLog('KEY:LOCK24H', `Key [${failover.keyId}] exhausted daily quota (limit: 20). Locked for 24 HOURS.`);
+          } else if (failover.is503) {
+            formatTerminalLog('KEY:503', `Key [${failover.keyId}] exhausted 4 retries on Google 503. Cooldown for ${failover.waitDurationSec}s.`);
           } else {
             formatTerminalLog('KEY:COOLDOWN', `Key [${failover.keyId}] rate-limited. Cooldown for ${failover.waitDurationSec}s.`);
           }
@@ -64,6 +79,7 @@ class GeminiService {
             formatTerminalLog('KEY:FAILOVER', `Instant failover (<0.1s) -> Switching to Key [${failover.nextKeyInfo.id}] (${failover.nextKeyInfo.remainingReady} keys ready)`);
             activeKeyInfo = failover.nextKeyInfo;
             ai = new GoogleGenAI({ apiKey: activeKeyInfo.key });
+            upload503Attempt = 0;
             continue; // Re-upload using the new healthy key!
           }
         }
@@ -72,8 +88,8 @@ class GeminiService {
       }
     }
 
-    const systemPrompt = `You are an elite speech recognition and professional subtitle timing specialist with high-precision acoustic audio analysis capabilities.
-Your objective is to produce perfectly timed, discrete subtitle segments with exact spoken start and end timestamps.
+    const systemPrompt = `You are an elite speech recognition and professional video dubbing localization specialist with high-precision acoustic audio analysis capabilities.
+Your objective is to produce perfectly timed, discrete subtitle segments with exact spoken start and end timestamps, containing BOTH the original spoken speech AND a natural, idiomatic Khmer translation.
 
 CRITICAL TIMING & SEGMENTATION RULES:
 1. Acoustic Sentence Boundaries (Breathing Pauses & Commas):
@@ -89,18 +105,19 @@ CRITICAL TIMING & SEGMENTATION RULES:
 3. Standard Subtitle Timestamp Format:
    - Timestamps must strictly be in standard "HH:MM:SS,mmm" format with a 2-digit hour prefix (e.g., "00:05:41,200"). Always include "00:".
 
-4. Language & Grammar:
-   - Transcribe spoken speech verbatim and grammatically in the original spoken language (Khmer script if Khmer, original script if foreign).
+4. Verbatim Transcription & Natural Khmer Dubbing Translation:
+   - "originalText": Transcribe the exact spoken words verbatim in the speaker's original language (e.g. English, Chinese, etc., or Khmer if already Khmer).
+   - "khmerText": Translate the meaning accurately and idiomatically into natural, conversational, fluent Khmer script suitable for video dubbing voiceover. If original speech is already in Khmer, provide the clean grammatical Khmer transcript.
 
 5. Schema Compliance:
-   - Output strictly as a JSON array adhering to the requested schema. Never output markdown code fences, comments, or preamble.`;
+   - Output strictly as a JSON array adhering to the requested schema with properties: start, end, originalText, khmerText, speaker. Never output markdown code fences, comments, or preamble.`;
 
-    const prompt = 'Please listen to the audio waveform and generate discrete, tightly bounded subtitle segments aligned to human vocal speech.';
+    const prompt = 'Please listen to the audio waveform and generate discrete, tightly bounded subtitle segments with both verbatim original speech and fluent Khmer translation.';
 
     const targetModel = process.env.GEMINI_MODEL || 'gemini-3.6-flash';
 
     // In @google/genai SDK, uploaded files are passed as { fileData: { fileUri: fileUpload.uri, mimeType: fileUpload.mimeType } }
-    const audioPart = fileUpload.uri 
+    let audioPart = fileUpload.uri 
       ? { fileData: { fileUri: fileUpload.uri, mimeType: fileUpload.mimeType || effectiveMimeType } }
       : fileUpload;
 
@@ -111,7 +128,7 @@ CRITICAL TIMING & SEGMENTATION RULES:
 
     const subtitleJsonSchema = {
       type: Type.ARRAY,
-      description: 'List of discrete transcribed subtitle segments tightly bounded to human vocal speech',
+      description: 'List of discrete transcribed subtitle segments with both original text and natural Khmer translation',
       items: {
         type: Type.OBJECT,
         properties: {
@@ -123,21 +140,25 @@ CRITICAL TIMING & SEGMENTATION RULES:
             type: Type.STRING,
             description: 'End timestamp in format HH:MM:SS,mmm marking when human vocalization ends, without extending into BGM (e.g. 00:05:44,800)'
           },
-          text: {
+          originalText: {
             type: Type.STRING,
-            description: 'Transcribed text for this individual sentence or short phrase'
+            description: 'Verbatim transcribed speech in the original spoken language'
+          },
+          khmerText: {
+            type: Type.STRING,
+            description: 'Natural, idiomatic, conversational Khmer translation of the speech'
           },
           speaker: {
             type: Type.STRING,
             description: 'Identified speaker or voice profile (e.g. Speaker 1, Male, Female)'
           }
         },
-        required: ['start', 'end', 'text']
+        required: ['start', 'end', 'originalText', 'khmerText']
       }
     };
 
     let response;
-    const maxRetries = 3;
+    const maxRetries = 5;
     let attempt = 0;
 
     while (attempt <= maxRetries) {
@@ -149,7 +170,10 @@ CRITICAL TIMING & SEGMENTATION RULES:
             contents: [
               audioPart,
               { text: 'Transcribe this audio with timestamps format: [HH:MM:SS,mmm - HH:MM:SS,mmm] Text' }
-            ]
+            ],
+            config: {
+              maxOutputTokens: 65536
+            }
           });
         } else {
           // Primary mode: structured JSON schema output with precise timestamps
@@ -161,7 +185,8 @@ CRITICAL TIMING & SEGMENTATION RULES:
             ],
             config: {
               responseMimeType: 'application/json',
-              responseSchema: subtitleJsonSchema
+              responseSchema: subtitleJsonSchema,
+              maxOutputTokens: 65536
             }
           });
         }
@@ -169,28 +194,41 @@ CRITICAL TIMING & SEGMENTATION RULES:
         formatTerminalLog('GEMINI:AI', `Model [${targetModel}] finished in ${elapsed}s`);
         break; // Successfully received response
       } catch (err) {
-        attempt++;
         const errStr = (err && (err.message || JSON.stringify(err))) || '';
         const isDenied = errStr.includes('PERMISSION_DENIED') ||
                          errStr.includes('denied access') ||
                          errStr.includes('403') ||
                          errStr.includes('API_KEY_INVALID') ||
                          errStr.includes('API key not valid');
+        const is503 = errStr.includes('503') ||
+                      errStr.includes('UNAVAILABLE') ||
+                      errStr.includes('high demand');
         const isRateLimit = errStr.includes('429') || 
                             errStr.includes('RESOURCE_EXHAUSTED') || 
                             errStr.includes('Quota exceeded');
-        const isTransient = isRateLimit ||
-                            errStr.includes('503') || 
-                            errStr.includes('UNAVAILABLE') || 
-                            errStr.includes('high demand');
+        const isTransient = isRateLimit || is503;
 
-        // Handle Rate Limit / Daily Quota / Permission Denied with KeyManager Failover
-        if (isRateLimit || isDenied) {
+        // If Error 503: retry on the SAME key 4 times (5s, 10s, 15s, 20s) before failing over!
+        if (is503) {
+          if (attempt < 4) {
+            attempt++;
+            const delayMs = attempt * 5000;
+            formatTerminalLog('GEMINI:WARN', `Google 503 Server Congestion on key [${activeKeyInfo.id}]. Retrying in ${delayMs / 1000}s (Attempt ${attempt}/4)...`);
+            await new Promise(r => setTimeout(r, delayMs));
+            continue; // Retry with the SAME key!
+          }
+          // After 4 attempts fail on this key, proceed to failover and cooldown!
+        }
+
+        // Handle Rate Limit / Daily Quota / Permission Denied / (503 after 4 failed retries) with KeyManager Failover
+        if (isRateLimit || isDenied || is503) {
           const failover = keyManager.markKeyExhausted(activeKeyInfo.key, err);
           if (failover.isDenied) {
             formatTerminalLog('KEY:DENIED', `Key [${failover.keyId}] permanently blocked by Google (403 Permission Denied). Auto-skipped!`);
           } else if (failover.isDailyLocked) {
             formatTerminalLog('KEY:LOCK24H', `Key [${failover.keyId}] exhausted daily quota (limit: 20). Locked for 24 HOURS.`);
+          } else if (failover.is503) {
+            formatTerminalLog('KEY:503', `Key [${failover.keyId}] exhausted 4 retries on Google 503. Cooldown for ${failover.waitDurationSec}s.`);
           } else {
             formatTerminalLog('KEY:COOLDOWN', `Key [${failover.keyId}] rate-limited. Cooldown for ${failover.waitDurationSec}s.`);
           }
@@ -217,7 +255,7 @@ CRITICAL TIMING & SEGMENTATION RULES:
         }
         
         if (attempt <= maxRetries && isTransient) {
-          let delayMs = attempt * 3000;
+          let delayMs = is503 ? Math.min(attempt * 4000, 20000) : attempt * 3000;
 
           // Parse Google's exact retryDelay requirement (e.g. 33s)
           let googleDelaySec = 0;
@@ -238,6 +276,8 @@ CRITICAL TIMING & SEGMENTATION RULES:
             // Wait requested duration + 2s safety buffer
             delayMs = (Math.ceil(googleDelaySec) + 2) * 1000;
             formatTerminalLog('GEMINI:WARN', `Rate limit reached (429). Google requested waiting ${googleDelaySec}s. Auto-waiting ${delayMs / 1000}s to refresh quota (Attempt ${attempt}/${maxRetries})...`);
+          } else if (is503) {
+            formatTerminalLog('GEMINI:WARN', `Google 503 Server High Demand spike on key [${activeKeyInfo.id}]. Retrying in ${delayMs / 1000}s (Attempt ${attempt}/${maxRetries})...`);
           } else {
             formatTerminalLog('GEMINI:WARN', `Model [${targetModel}] temporary busy/unavailable. Retrying in ${delayMs / 1000}s (Attempt ${attempt}/${maxRetries})...`);
           }
@@ -319,14 +359,18 @@ CRITICAL TIMING & SEGMENTATION RULES:
         const start = normalizeTimestamp(item.start || item.startTime || item.start_time, idx * 4);
         const end = normalizeTimestamp(item.end || item.endTime || item.end_time, idx * 4 + 3.8);
         const text = (item.text || item.transcript || item.content || '').trim();
+        const originalText = (item.originalText || text).trim();
+        const khmerText = (item.khmerText || item.translation || text).trim();
         const speaker = item.speaker || item.speakerTag || item.speaker_tag || 'Speaker 1';
         return {
           start,
           end,
-          text,
+          originalText,
+          khmerText,
+          text: khmerText || originalText,
           speaker: typeof speaker === 'number' ? `Speaker ${speaker}` : String(speaker)
         };
-      }).filter(s => s.text.length > 0);
+      }).filter(s => s.originalText.length > 0 || s.khmerText.length > 0);
 
       if (parsedSubtitles.length > 0) {
         formatTerminalLog('GEMINI:AI', `Generated ${parsedSubtitles.length} subtitles from audioTranscription structure`);
@@ -346,12 +390,18 @@ CRITICAL TIMING & SEGMENTATION RULES:
       if (jsonStr.endsWith('```')) jsonStr = jsonStr.slice(0, -3);
       const parsed = JSON.parse(jsonStr.trim());
       if (Array.isArray(parsed) && parsed.length > 0) {
-        const normalized = parsed.map((item, idx) => ({
-          start: normalizeTimestamp(item.start, idx * 3),
-          end: normalizeTimestamp(item.end, (idx + 1) * 3),
-          text: (item.text || item.transcript || item.content || '').trim(),
-          speaker: item.speaker || 'Speaker 1'
-        })).filter(s => s.text.length > 0);
+        const normalized = parsed.map((item, idx) => {
+          const originalText = (item.originalText || item.text || item.transcript || item.content || '').trim();
+          const khmerText = (item.khmerText || item.translation || originalText).trim();
+          return {
+            start: normalizeTimestamp(item.start, idx * 3),
+            end: normalizeTimestamp(item.end, (idx + 1) * 3),
+            originalText: originalText,
+            khmerText: khmerText,
+            text: khmerText || originalText,
+            speaker: item.speaker || 'Speaker 1'
+          };
+        }).filter(s => s.originalText.length > 0 || s.khmerText.length > 0);
 
         formatTerminalLog('GEMINI:AI', `Generated ${normalized.length} subtitles from structured JSON`);
         return normalized;
@@ -365,10 +415,13 @@ CRITICAL TIMING & SEGMENTATION RULES:
       const line = lines[i].trim();
       const match = line.match(/\[?(\d{2}:\d{2}:\d{2}[,.]\d{3})\s*[-–>]\s*(\d{2}:\d{2}:\d{2}[,.]\d{3})\]?\s*(.*)/);
       if (match) {
+        const textContent = match[3].trim();
         lineSegments.push({
           start: match[1].replace('.', ','),
           end: match[2].replace('.', ','),
-          text: match[3].trim(),
+          originalText: textContent,
+          khmerText: textContent,
+          text: textContent,
           speaker: 'Speaker 1'
         });
       } else {
@@ -377,6 +430,8 @@ CRITICAL TIMING & SEGMENTATION RULES:
         lineSegments.push({
           start: formatSecondsToSRT(sSec),
           end: formatSecondsToSRT(eSec),
+          originalText: line,
+          khmerText: line,
           text: line,
           speaker: 'Speaker 1'
         });

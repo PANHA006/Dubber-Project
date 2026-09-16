@@ -60,7 +60,7 @@ class KeyManagerService {
     if (!rawInput || typeof rawInput !== 'string') return [];
     return rawInput
       .split(/[\n,;]+/)
-      .map(k => k.trim())
+      .map(k => k.trim().replace(/^["']+|["']+$/g, ''))
       .filter(k => k.length > 5);
   }
 
@@ -159,7 +159,12 @@ class KeyManagerService {
                      errStr.includes('API_KEY_INVALID') ||
                      errStr.includes('API key not valid');
 
-    const isDaily = !isDenied && (
+    const is503 = !isDenied && (
+                  errStr.includes('503') ||
+                  errStr.includes('UNAVAILABLE') ||
+                  errStr.includes('high demand'));
+
+    const isDaily = !isDenied && !is503 && (
                     errStr.includes('GenerateRequestsPerDay') ||
                     errStr.includes('PerDay') ||
                     errStr.includes('per day') ||
@@ -183,6 +188,11 @@ class KeyManagerService {
       lockedUntil = now + TWENTY_FOUR_HOURS_MS;
       waitDurationSec = 24 * 3600;
       reason = 'DAILY_QUOTA_24H';
+    } else if (is503) {
+      status = 'COOLDOWN';
+      lockedUntil = now + 60 * 1000;
+      waitDurationSec = 60;
+      reason = 'SERVER_HIGH_DEMAND_503';
     } else {
       status = 'COOLDOWN';
       let delaySec = 60;
@@ -216,6 +226,7 @@ class KeyManagerService {
       keyId: this.getKeyId(key),
       isDenied,
       isDailyLocked: isDaily,
+      is503,
       status,
       lockedUntil,
       waitDurationSec,
