@@ -5,9 +5,11 @@
   "main": "src/server.js",
   "scripts": {
     "start": "node src/server.js",
-    "dev": "nodemon src/server.js",
+    "dev": "nodemon",
+    "dev:all": "npx concurrently -k -i \"npm run dev\" \"npm run watch:css\"",
     "build:css": "npx @tailwindcss/cli -i ./public/css/input.css -o ./public/css/output.css --minify",
-    "watch:css": "npx @tailwindcss/cli -i ./public/css/input.css -o ./public/css/output.css --watch"
+    "watch:css": "npx @tailwindcss/cli -i ./public/css/input.css -o ./public/css/output.css --watch",
+    "test": "node tests/e2e-api.test.js"
   },
   "keywords": [
     "dubber",
@@ -18,9 +20,11 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@google/genai": "^2.22.0",
     "cors": "^2.8.6",
     "dotenv": "^17.4.2",
-    "express": "^5.2.1"
+    "express": "^5.2.1",
+    "multer": "^2.4.0"
   },
   "devDependencies": {
     "@tailwindcss/cli": "^4.3.3",

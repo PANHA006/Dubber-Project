@@ -17,6 +17,7 @@ yarn-error.log*
 # Build outputs & temporary files
 dist/
 tmp/
+.key-status.json
 
 # OS Files
 .DS_Store

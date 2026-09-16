@@ -1,0 +1,1326 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>DAI Dubber Pro - Khmer Edition Workspace</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Google Fonts: Inter & Kantumruy Pro for Khmer typography -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Kantumruy+Pro:wght@400;500;600;700&display=swap"
+        rel="stylesheet">
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'Kantumruy Pro', 'sans-serif'],
+                        khmer: ['Kantumruy Pro', 'sans-serif'],
+                    },
+                    colors: {
+                        surface: {
+                            900: '#070a12',
+                            850: '#0b0f19',
+                            800: '#111827',
+                            750: '#151d30',
+                            700: '#1f293d',
+                            600: '#2d3b55',
+                        },
+                        brand: {
+                            primary: '#6366f1',
+                            violet: '#8b5cf6',
+                            accent: '#4f46e5',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+
+    <style>
+        /* Custom scrollbars for professional video editor feel */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: #0b0f19;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: #1f293d;
+            border-radius: 9999px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: #334155;
+        }
+
+        .custom-range::-webkit-slider-thumb {
+            appearance: none;
+            width: 14px;
+            height: 14px;
+            border-radius: 50%;
+            background: #818cf8;
+            cursor: pointer;
+            box-shadow: 0 0 8px rgba(129, 140, 248, 0.6);
+        }
+
+        .playhead-needle {
+            pointer-events: none;
+            box-shadow: 0 0 10px rgba(239, 68, 68, 0.8);
+        }
+    </style>
+</head>
+
+<body class="bg-[#080b13] text-slate-200 font-sans h-screen flex flex-col overflow-hidden select-none">
+
+    <!-- Top Navigation Bar -->
+    <header
+        class="h-14 border-b border-slate-800/80 bg-[#0c101d] px-4 flex items-center justify-between gap-3 shrink-0 z-30">
+        <!-- Brand / Title -->
+        <div class="flex items-center gap-3 min-w-max">
+            <div
+                class="w-8 h-8 rounded-lg bg-gradient-to-tr from-violet-600 to-indigo-500 p-0.5 shadow-lg shadow-indigo-500/20 flex items-center justify-center">
+                <div
+                    class="w-full h-full bg-[#0d1222] rounded-[6px] flex items-center justify-center text-sm font-bold text-indigo-400">
+                    🎙️
+                </div>
+            </div>
+            <div>
+                <div class="flex items-center gap-1.5 leading-tight">
+                    <span class="font-bold text-sm tracking-wide text-white">DAI Dubber Pro</span>
+                    <span class="text-xs">👑</span>
+                </div>
+                <p class="text-[10px] font-medium text-slate-400 leading-tight">Khmer Edition Workspace &ndash; PRO</p>
+            </div>
+        </div>
+
+        <!-- Project Tabs -->
+        <div class="flex items-center gap-1.5 overflow-x-auto py-1 max-w-xl scrollbar-none" id="tabs-container">
+            <button
+                class="project-tab active flex items-center gap-2 px-3 py-1.5 text-xs font-medium rounded-lg bg-indigo-600/30 text-indigo-200 border border-indigo-500/40 shadow-sm transition-all hover:bg-indigo-600/40">
+                <i data-lucide="video" class="w-3.5 h-3.5 text-indigo-400"></i>
+                <span>video_01.mp4</span>
+            </button>
+            <button
+                class="project-tab flex items-center gap-2 px-3 py-1.5 text-xs font-medium rounded-lg bg-slate-800/60 text-slate-400 border border-slate-700/50 hover:bg-slate-800 hover:text-slate-200 transition-all">
+                <i data-lucide="video" class="w-3.5 h-3.5 opacity-60"></i>
+                <span>video_02.mp4</span>
+            </button>
+            <button
+                class="project-tab flex items-center gap-2 px-3 py-1.5 text-xs font-medium rounded-lg bg-slate-800/60 text-slate-400 border border-slate-700/50 hover:bg-slate-800 hover:text-slate-200 transition-all">
+                <i data-lucide="video" class="w-3.5 h-3.5 opacity-60"></i>
+                <span>tutorial_03.mp4</span>
+            </button>
+            <button id="add-tab-btn"
+                class="flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium rounded-lg bg-slate-800/40 text-slate-400 hover:text-slate-200 hover:bg-slate-800 border border-dashed border-slate-700 transition-all">
+                <i data-lucide="plus" class="w-3.5 h-3.5"></i>
+                <span>Add</span>
+            </button>
+        </div>
+
+        <!-- Quick Utilities / Toolbar -->
+        <div class="flex items-center gap-2">
+            <!-- File folder menu -->
+            <div class="relative">
+                <button id="folder-menu-btn"
+                    class="flex items-center gap-1 px-2.5 py-1.5 bg-slate-800/80 hover:bg-slate-700 text-slate-300 rounded-lg border border-slate-700/80 text-xs transition">
+                    <i data-lucide="folder" class="w-3.5 h-3.5 text-amber-400"></i>
+                    <i data-lucide="chevron-down" class="w-3 h-3 text-slate-400"></i>
+                </button>
+                <!-- Dropdown Menu -->
+                <div id="folder-dropdown"
+                    class="hidden absolute right-0 mt-1 w-44 bg-[#111728] border border-slate-700 rounded-lg shadow-xl py-1 text-xs z-50">
+                    <button onclick="triggerVideoUpload()"
+                        class="w-full text-left px-3 py-1.5 hover:bg-indigo-600/20 hover:text-indigo-300 flex items-center gap-2">
+                        <i data-lucide="upload" class="w-3.5 h-3.5"></i> Import Video
+                    </button>
+                    <button onclick="showToast('Exporting project package...')"
+                        class="w-full text-left px-3 py-1.5 hover:bg-indigo-600/20 hover:text-indigo-300 flex items-center gap-2">
+                        <i data-lucide="download" class="w-3.5 h-3.5"></i> Export Subtitles (.srt)
+                    </button>
+                    <button onclick="showToast('Project saved!')"
+                        class="w-full text-left px-3 py-1.5 hover:bg-indigo-600/20 hover:text-indigo-300 flex items-center gap-2 border-t border-slate-800">
+                        <i data-lucide="save" class="w-3.5 h-3.5"></i> Save Workspace
+                    </button>
+                </div>
+            </div>
+
+            <!-- Undo / Redo -->
+            <div class="flex items-center bg-slate-800/80 rounded-lg border border-slate-700/80 p-0.5">
+                <button onclick="showToast('Undo action')" title="Undo"
+                    class="p-1.5 text-slate-400 hover:text-white rounded hover:bg-slate-700 transition">
+                    <i data-lucide="undo-2" class="w-3.5 h-3.5"></i>
+                </button>
+                <button onclick="showToast('Redo action')" title="Redo"
+                    class="p-1.5 text-slate-400 hover:text-white rounded hover:bg-slate-700 transition">
+                    <i data-lucide="redo-2" class="w-3.5 h-3.5"></i>
+                </button>
+            </div>
+
+            <!-- Notification / Activity -->
+            <button
+                class="relative p-2 text-slate-300 bg-slate-800/80 hover:bg-slate-700 rounded-lg border border-slate-700/80 transition"
+                title="Activity Feed">
+                <i data-lucide="bell" class="w-3.5 h-3.5"></i>
+                <span
+                    class="absolute -top-1 -right-1 bg-indigo-500 text-white text-[9px] font-bold rounded-full h-4 min-w-[16px] px-1 flex items-center justify-center ring-2 ring-[#0c101d]">2</span>
+            </button>
+
+            <!-- Language Switcher Pill -->
+            <div class="flex items-center bg-[#151c2e] p-0.5 rounded-lg border border-slate-700/80 text-xs">
+                <button id="lang-en" onclick="setLanguage('en')"
+                    class="px-2 py-0.5 rounded-md text-[11px] font-medium bg-indigo-600 text-white shadow-sm transition">EN</button>
+                <button id="lang-km" onclick="setLanguage('km')"
+                    class="px-2 py-0.5 rounded-md text-[11px] font-medium text-slate-400 hover:text-white transition">ខ្មែរ</button>
+            </div>
+
+            <!-- Theme / Sun toggle -->
+            <button onclick="toggleTheme()"
+                class="p-2 text-amber-300 bg-slate-800/80 hover:bg-slate-700 rounded-lg border border-slate-700/80 transition"
+                title="Toggle Mode">
+                <i data-lucide="sun" class="w-3.5 h-3.5"></i>
+            </button>
+
+            <!-- Settings Gear -->
+            <button onclick="openSettingsModal()"
+                class="p-2 text-slate-300 bg-slate-800/80 hover:bg-slate-700 rounded-lg border border-slate-700/80 transition"
+                title="Workspace Settings">
+                <i data-lucide="settings" class="w-3.5 h-3.5"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Hidden file input for loading video -->
+    <input type="file" id="video-file-input" accept="video/mp4,video/webm,video/ogg" class="hidden" />
+
+    <!-- Main Workspace Layout -->
+    <main class="flex-1 flex overflow-hidden p-2.5 gap-2.5">
+
+        <!-- LEFT SIDEBAR: Video Preview & Workspace Tools -->
+        <section class="w-[320px] lg:w-[350px] xl:w-[370px] flex flex-col gap-2.5 shrink-0">
+
+            <!-- Video Preview Card -->
+            <div
+                class="bg-[#0f1422] border border-slate-800/90 rounded-xl p-3 flex flex-col shadow-lg flex-1 min-h-[380px]">
+                <!-- Title & Sub-actions -->
+                <div class="flex items-center justify-between mb-2">
+                    <div class="flex items-center gap-2 text-slate-200 font-semibold text-xs tracking-wide">
+                        <i data-lucide="monitor-play" class="w-4 h-4 text-indigo-400"></i>
+                        <span>Video Preview</span>
+                    </div>
+                    <span id="video-resolution"
+                        class="text-[10px] text-slate-400 bg-slate-800/80 px-1.5 py-0.5 rounded border border-slate-700/60">1080p
+                        HD</span>
+                </div>
+
+                <!-- Video Secondary Tool Icons Bar -->
+                <div
+                    class="flex items-center justify-between bg-[#141b2e] px-2 py-1.5 rounded-lg border border-slate-800 text-slate-400 text-xs mb-2.5">
+                    <button onclick="toggleVideoAspect()" title="Aspect Ratio"
+                        class="p-1 hover:text-white transition"><i data-lucide="ratio" class="w-3.5 h-3.5"></i></button>
+                    <button onclick="flipVideo()" title="Mirror Flip" class="p-1 hover:text-white transition"><i
+                            data-lucide="arrow-left-right" class="w-3.5 h-3.5"></i></button>
+                    <button onclick="toggleSafeMargin()" title="Safe Margins" class="p-1 hover:text-white transition"><i
+                            data-lucide="scan" class="w-3.5 h-3.5"></i></button>
+                    <button onclick="rotateVideo()" title="Rotate" class="p-1 hover:text-white transition"><i
+                            data-lucide="rotate-cw" class="w-3.5 h-3.5"></i></button>
+                    <button onclick="toggleTextTool()" title="Text Typography"
+                        class="p-1 hover:text-indigo-400 transition"><i data-lucide="type"
+                            class="w-3.5 h-3.5"></i></button>
+                    <button onclick="toggleSubOverlay()" title="Subtitle Display"
+                        class="p-1 text-indigo-400 hover:text-indigo-300 transition"><i data-lucide="subtitles"
+                            class="w-3.5 h-3.5"></i></button>
+                    <button onclick="cycleSubColor()" title="Color Style" class="p-1 hover:text-white transition"><i
+                            data-lucide="palette" class="w-3.5 h-3.5"></i></button>
+                    <span class="w-2 h-2 rounded-full bg-emerald-400 ring-4 ring-emerald-400/20"
+                        title="Audio engine active"></span>
+                </div>
+
+                <!-- Player Screen Container -->
+                <div class="relative flex-1 bg-[#090d16] rounded-xl border border-slate-800/90 overflow-hidden flex items-center justify-center group"
+                    id="player-viewport">
+                    <!-- Actual HTML5 video tag (hidden until loaded) -->
+                    <video id="main-video" class="w-full h-full object-contain hidden" playsinline></video>
+
+                    <!-- Mock/Canvas Animated Visualizer when no video or active state -->
+                    <canvas id="preview-canvas" class="w-full h-full object-contain"></canvas>
+
+                    <!-- Fallback Placeholders -->
+                    <div id="no-video-placeholder"
+                        class="absolute inset-0 flex flex-col items-center justify-center text-slate-500 pointer-events-none p-4 text-center">
+                        <div
+                            class="w-14 h-14 rounded-2xl bg-slate-800/50 border border-slate-700/60 flex items-center justify-center mb-2 text-slate-400 group-hover:scale-105 transition">
+                            <i data-lucide="tv" class="w-7 h-7 stroke-[1.5]"></i>
+                        </div>
+                        <p class="text-xs font-medium text-slate-400">No video loaded</p>
+                        <p class="text-[11px] text-slate-500 mt-0.5">Click 'Load Video' below or drop an MP4</p>
+                    </div>
+
+                    <!-- Dynamic Subtitle Overlay on Video Screen -->
+                    <div id="sub-overlay-container"
+                        class="absolute bottom-4 inset-x-4 flex justify-center pointer-events-none transition-all">
+                        <div id="sub-overlay-text"
+                            class="px-3 py-1 bg-black/75 backdrop-blur-sm rounded-md text-white font-khmer text-sm md:text-base tracking-wide border border-white/10 shadow-xl text-center max-w-[90%]">
+                            សួស្តីអ្នករាល់គ្នា
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Video Time & Playback Controls Bar -->
+                <div
+                    class="mt-2.5 bg-[#141b2e] rounded-xl border border-slate-800 p-2 flex items-center justify-between gap-2">
+                    <span id="timecode-current"
+                        class="text-xs font-mono font-medium text-slate-300 tracking-wider">00:00.00</span>
+
+                    <div class="flex items-center gap-1.5">
+                        <button id="btn-play" onclick="togglePlay()"
+                            class="w-8 h-8 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white flex items-center justify-center transition shadow-md shadow-indigo-600/30">
+                            <i id="play-icon" data-lucide="play" class="w-4 h-4 fill-white"></i>
+                        </button>
+                        <button id="btn-stop" onclick="stopPlayback()"
+                            class="w-8 h-8 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 flex items-center justify-center transition border border-slate-700/60">
+                            <i data-lucide="square" class="w-3.5 h-3.5 fill-slate-300"></i>
+                        </button>
+                    </div>
+
+                    <span id="timecode-total"
+                        class="text-xs font-mono font-medium text-slate-400 tracking-wider">00:30.00</span>
+                </div>
+            </div>
+
+            <!-- Workspace Tools Card -->
+            <div class="bg-[#0f1422] border border-slate-800/90 rounded-xl p-3 shadow-lg shrink-0">
+                <div class="flex items-center gap-2 text-slate-200 font-semibold text-xs mb-2.5">
+                    <i data-lucide="layout-grid" class="w-4 h-4 text-indigo-400"></i>
+                    <span>Workspace Tools</span>
+                </div>
+
+                <div class="grid grid-cols-2 gap-2">
+                    <!-- Load Video Button -->
+                    <button onclick="triggerVideoUpload()"
+                        class="flex flex-col items-center justify-center gap-1.5 p-3 rounded-xl bg-[#141b2e] hover:bg-[#1a233b] border border-slate-800 hover:border-slate-700 transition group">
+                        <div
+                            class="w-7 h-7 rounded-lg bg-amber-500/10 text-amber-400 flex items-center justify-center group-hover:scale-110 transition">
+                            <i data-lucide="folder-open" class="w-4 h-4"></i>
+                        </div>
+                        <span class="text-[11px] font-medium text-slate-300">Load Video</span>
+                    </button>
+
+                    <!-- Load BGM Button -->
+                    <button onclick="loadDemoBGM()"
+                        class="flex flex-col items-center justify-center gap-1.5 p-3 rounded-xl bg-[#141b2e] hover:bg-[#1a233b] border border-slate-800 hover:border-slate-700 transition group">
+                        <div
+                            class="w-7 h-7 rounded-lg bg-violet-500/10 text-violet-400 flex items-center justify-center group-hover:scale-110 transition">
+                            <i data-lucide="music" class="w-4 h-4"></i>
+                        </div>
+                        <span class="text-[11px] font-medium text-slate-300">Load BGM</span>
+                    </button>
+
+                    <!-- Isolate BGM Button -->
+                    <button id="btn-isolate" onclick="toggleIsolateBGM()"
+                        class="flex flex-col items-center justify-center gap-1.5 p-3 rounded-xl bg-[#141b2e] hover:bg-[#1a233b] border border-slate-800 hover:border-slate-700 transition group">
+                        <div
+                            class="w-7 h-7 rounded-lg bg-indigo-500/10 text-indigo-400 flex items-center justify-center group-hover:scale-110 transition">
+                            <i data-lucide="sparkles" class="w-4 h-4"></i>
+                        </div>
+                        <span id="isolate-label" class="text-[11px] font-medium text-slate-300">Isolate BGM</span>
+                    </button>
+
+                    <!-- Mute Audio Button -->
+                    <button id="btn-mute" onclick="toggleMuteAudio()"
+                        class="flex flex-col items-center justify-center gap-1.5 p-3 rounded-xl bg-[#141b2e] hover:bg-[#1a233b] border border-slate-800 hover:border-slate-700 transition group">
+                        <div
+                            class="w-7 h-7 rounded-lg bg-rose-500/10 text-rose-400 flex items-center justify-center group-hover:scale-110 transition">
+                            <i id="mute-icon" data-lucide="mic-off" class="w-4 h-4"></i>
+                        </div>
+                        <span id="mute-label" class="text-[11px] font-medium text-slate-300">Mute Audio</span>
+                    </button>
+                </div>
+            </div>
+        </section>
+
+        <!-- RIGHT MAIN PANEL: Subtitle Data & Timeline Editor -->
+        <section class="flex-1 flex flex-col gap-2.5 overflow-hidden">
+
+            <!-- SUBTITLE DATA SECTION -->
+            <div
+                class="flex-1 bg-[#0f1422] border border-slate-800/90 rounded-xl p-3 flex flex-col shadow-lg overflow-hidden">
+
+                <!-- Table Top Bar / Controls -->
+                <div class="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-800/80">
+                    <div class="flex items-center gap-2">
+                        <div class="flex items-center gap-2 text-slate-200 font-semibold text-xs tracking-wide">
+                            <i data-lucide="file-text" class="w-4 h-4 text-indigo-400"></i>
+                            <span>Subtitle Data</span>
+                        </div>
+
+                        <div class="flex items-center gap-1.5 ml-2">
+                            <button onclick="addNewSubtitleRow()"
+                                class="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-medium transition shadow-sm">
+                                <i data-lucide="plus" class="w-3.5 h-3.5"></i>
+                                <span>Add Text</span>
+                            </button>
+                            <button onclick="editSelectedRow()"
+                                class="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 text-xs transition">
+                                <i data-lucide="pen-tool" class="w-3 h-3"></i>
+                                <span>Edit</span>
+                            </button>
+                            <button onclick="deleteSelectedRows()"
+                                class="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-rose-900/40 text-slate-300 hover:text-rose-300 border border-slate-700 text-xs transition">
+                                <i data-lucide="trash-2" class="w-3 h-3"></i>
+                                <span>Delete</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Bulk Voice Profile Controls -->
+                    <div class="flex items-center gap-2 text-xs">
+                        <span class="text-slate-400 text-[11px]">Set all voices to:</span>
+                        <div class="flex items-center bg-[#141b2e] rounded-lg p-0.5 border border-slate-700/80">
+                            <button onclick="setAllVoices('Male')"
+                                class="px-2.5 py-1 rounded-md text-xs font-medium text-slate-300 hover:bg-slate-700/60 hover:text-white transition">Male</button>
+                            <button onclick="setAllVoices('Female')"
+                                class="px-2.5 py-1 rounded-md text-xs font-medium text-slate-300 hover:bg-slate-700/60 hover:text-white transition">Female</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Subtitle List Table -->
+                <div class="flex-1 overflow-y-auto mt-2 pr-1">
+                    <table class="w-full text-left text-xs border-collapse">
+                        <thead>
+                            <tr
+                                class="text-[11px] font-semibold text-slate-400 uppercase tracking-wider border-b border-slate-800/80 sticky top-0 bg-[#0f1422] z-10">
+                                <th class="py-2.5 px-3 w-10 text-center">
+                                    <input type="checkbox" id="select-all-subs" onchange="toggleSelectAll(this)"
+                                        class="rounded border-slate-700 bg-slate-800 text-indigo-600 focus:ring-0 focus:ring-offset-0 cursor-pointer" />
+                                </th>
+                                <th class="py-2.5 px-3 w-28">START</th>
+                                <th class="py-2.5 px-3 w-28">END</th>
+                                <th class="py-2.5 px-4 font-khmer">KHMER TEXT (EDITABLE)</th>
+                                <th class="py-2.5 px-3 w-36">VOICE PROFILE</th>
+                                <th class="py-2.5 px-3 w-32 text-center">AUDIO STATUS</th>
+                            </tr>
+                        </thead>
+                        <tbody id="subtitle-table-body" class="divide-y divide-slate-800/50">
+                            <!-- Dynamically rendered rows -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- TIMELINE EDITOR SECTION -->
+            <div class="bg-[#0f1422] border border-slate-800/90 rounded-xl p-3 flex flex-col shadow-lg shrink-0">
+
+                <!-- Timeline Header Controls -->
+                <div class="flex flex-wrap items-center justify-between gap-2 pb-2.5 border-b border-slate-800/80">
+                    <div class="flex items-center gap-4">
+                        <span class="text-xs font-bold text-slate-200 tracking-wide">Timeline Editor</span>
+
+                        <!-- Zoom slider -->
+                        <div class="flex items-center gap-2">
+                            <span class="text-[11px] text-slate-400">Zoom:</span>
+                            <input id="timeline-zoom" type="range" min="1" max="3" step="0.1" value="1"
+                                oninput="updateTimelineZoom(this.value)"
+                                class="custom-range w-20 h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer" />
+                        </div>
+                    </div>
+
+                    <!-- Quick Action Buttons -->
+                    <div class="flex items-center gap-2 flex-wrap text-xs">
+                        <!-- Language dropdown -->
+                        <div class="relative">
+                            <button
+                                class="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-800 border border-slate-700 text-slate-300 hover:text-white transition">
+                                <i data-lucide="globe" class="w-3.5 h-3.5 text-indigo-400"></i>
+                                <span class="text-xs font-khmer">Khmer</span>
+                                <i data-lucide="chevron-down" class="w-3 h-3 text-slate-400"></i>
+                            </button>
+                        </div>
+
+                        <!-- Transcribe -->
+                        <button onclick="mockTranscribe()"
+                            class="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 transition">
+                            <i data-lucide="wand-2" class="w-3.5 h-3.5 text-amber-400"></i>
+                            <span>Transcribe</span>
+                        </button>
+
+                        <!-- Auto-Fit -->
+                        <button id="btn-autofit" onclick="toggleAutoFit()"
+                            class="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 transition">
+                            <i data-lucide="zap" class="w-3.5 h-3.5 text-amber-500"></i>
+                            <span id="autofit-text">Auto-Fit: OFF</span>
+                        </button>
+
+                        <!-- Sync End -->
+                        <button onclick="syncTrackEnd()"
+                            class="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 transition">
+                            <i data-lucide="link" class="w-3.5 h-3.5 text-slate-400"></i>
+                            <span>Sync End</span>
+                        </button>
+
+                        <!-- Generate Audio CTA -->
+                        <button onclick="generateAllAudio()"
+                            class="flex items-center gap-1.5 px-3.5 py-1 rounded-lg bg-gradient-to-r from-indigo-600 via-indigo-500 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white font-medium shadow-md shadow-indigo-500/20 transition transform active:scale-95">
+                            <i data-lucide="music-2" class="w-3.5 h-3.5"></i>
+                            <span>Generate Audio</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Interactive Tracks Canvas & Ruler -->
+                <div class="relative mt-2 overflow-x-auto select-none" id="timeline-scroll-container">
+
+                    <!-- Time Ruler (0s, 5s, 10s, 15s, 20s, 25s, 30s) -->
+                    <div class="flex items-center text-[10px] font-mono text-slate-500 pl-10 pr-4 h-5 border-b border-slate-800"
+                        id="timeline-ruler">
+                        <div class="w-[18%]">0s</div>
+                        <div class="w-[18%]">5s</div>
+                        <div class="w-[18%]">10s</div>
+                        <div class="w-[18%]">15s</div>
+                        <div class="w-[18%]">20s</div>
+                        <div class="w-[10%]">25s</div>
+                    </div>
+
+                    <!-- Red Playhead Needle Indicator -->
+                    <div id="playhead"
+                        class="playhead-needle absolute top-0 bottom-0 left-[18%] w-[1.5px] bg-rose-500 z-20 cursor-ew-resize">
+                        <div class="w-2.5 h-2.5 -ml-[4px] bg-rose-500 rounded-sm rotate-45 shadow-sm"></div>
+                    </div>
+
+                    <!-- Tracks Container -->
+                    <div class="flex flex-col gap-1.5 py-2" id="tracks-wrapper">
+                        <!-- Track T1 (Text Subtitles Track) -->
+                        <div class="flex items-center gap-2 h-9">
+                            <span
+                                class="w-8 text-[11px] font-bold text-indigo-400 bg-slate-800/80 border border-slate-700/60 rounded px-1.5 py-1 text-center shrink-0">T1</span>
+                            <div class="flex-1 h-full bg-[#0a0e1a] rounded-lg border border-slate-800/90 relative overflow-hidden flex items-center px-1"
+                                id="track-t1">
+                                <!-- Subtitle blocks -->
+                                <div class="absolute left-[6.6%] w-[10%] h-7 bg-indigo-900/60 border border-indigo-500/50 rounded-md flex items-center px-2 text-[10px] font-khmer text-indigo-200 truncate cursor-pointer hover:bg-indigo-800/70"
+                                    title="00:02 - 00:05: សួស្តីអ្នករាល់គ្នា">
+                                    សួស្តីអ្នករាល់គ្នា
+                                </div>
+                                <div class="absolute left-[20%] w-[13.3%] h-7 bg-indigo-900/60 border border-indigo-500/50 rounded-md flex items-center px-2 text-[10px] font-khmer text-indigo-200 truncate cursor-pointer hover:bg-indigo-800/70"
+                                    title="00:06 - 00:10: ខ្ញុំមកពីភ្នំពេញ">
+                                    ខ្ញុំមកពីភ្នំពេញ
+                                </div>
+                                <div class="absolute left-[36.6%] w-[13.3%] h-7 bg-indigo-900/60 border border-indigo-500/50 rounded-md flex items-center px-2 text-[10px] font-khmer text-indigo-200 truncate cursor-pointer hover:bg-indigo-800/70"
+                                    title="00:11 - 00:15: ថ្ងៃនេះយើងនឹងបង្ហាញ...">
+                                    ថ្ងៃនេះយើងនឹងបង្ហាញ...
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Track A1 (Dubbed Khmer Audio Track) -->
+                        <div class="flex items-center gap-2 h-9">
+                            <span
+                                class="w-8 text-[11px] font-bold text-violet-400 bg-slate-800/80 border border-slate-700/60 rounded px-1.5 py-1 text-center shrink-0">A1</span>
+                            <div class="flex-1 h-full bg-[#0a0e1a] rounded-lg border border-slate-800/90 relative overflow-hidden flex items-center px-1"
+                                id="track-a1">
+                                <!-- Audio Waveform / Blocks -->
+                                <div
+                                    class="absolute left-[6.6%] w-[10%] h-7 bg-violet-950/60 border border-violet-500/40 rounded-md flex items-center px-2 text-[9px] text-violet-200">
+                                    <div class="flex items-center gap-0.5 w-full opacity-70">
+                                        <span class="h-3 w-1 bg-violet-400 rounded-full"></span>
+                                        <span class="h-5 w-1 bg-violet-300 rounded-full"></span>
+                                        <span class="h-2 w-1 bg-violet-400 rounded-full"></span>
+                                        <span class="h-4 w-1 bg-violet-300 rounded-full"></span>
+                                        <span class="h-3 w-1 bg-violet-400 rounded-full"></span>
+                                    </div>
+                                </div>
+                                <div
+                                    class="absolute left-[20%] w-[13.3%] h-7 bg-violet-950/60 border border-violet-500/40 rounded-md flex items-center px-2 text-[9px] text-violet-200">
+                                    <div class="flex items-center gap-0.5 w-full opacity-70">
+                                        <span class="h-2 w-1 bg-violet-400 rounded-full"></span>
+                                        <span class="h-5 w-1 bg-violet-300 rounded-full"></span>
+                                        <span class="h-4 w-1 bg-violet-400 rounded-full"></span>
+                                        <span class="h-3 w-1 bg-violet-400 rounded-full"></span>
+                                        <span class="h-5 w-1 bg-violet-300 rounded-full"></span>
+                                        <span class="h-2 w-1 bg-violet-400 rounded-full"></span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- BOTTOM RENDER QUEUE STATUS BAR -->
+                <div
+                    class="mt-2 pt-2 border-t border-slate-800/80 flex flex-wrap items-center justify-between gap-2 text-xs">
+                    <div class="flex items-center gap-2">
+                        <span class="text-[10px] font-bold text-slate-400 tracking-wider">RENDER QUEUE</span>
+                        <div class="flex items-center gap-2 flex-wrap" id="render-queue-list">
+                            <!-- Item 1: Done -->
+                            <span
+                                class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-950/40 text-emerald-300 border border-emerald-500/30 text-[11px]">
+                                <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                                <span>video_01.mp4</span>
+                                <span class="font-medium text-emerald-400">✓ Done</span>
+                            </span>
+
+                            <!-- Item 2: Processing -->
+                            <span
+                                class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-indigo-950/40 text-indigo-300 border border-indigo-500/30 text-[11px]">
+                                <span class="w-1.5 h-1.5 rounded-full bg-indigo-400 animate-ping"></span>
+                                <span>video_02.mp4</span>
+                                <i data-lucide="loader-2" class="w-3 h-3 animate-spin text-indigo-400"></i>
+                                <span class="font-mono text-indigo-300" id="proc-percent">47%</span>
+                            </span>
+
+                            <!-- Item 3: Queue -->
+                            <span
+                                class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-950/40 text-amber-300 border border-amber-500/30 text-[11px]">
+                                <span class="w-1.5 h-1.5 rounded-full bg-amber-400"></span>
+                                <span>tutorial_03.mp4</span>
+                                <span class="text-amber-400/90">⌛ Queue</span>
+                            </span>
+                        </div>
+                    </div>
+
+                    <div class="text-[11px] text-slate-500">
+                        Engine: <span class="text-slate-400">Khmer AI-TTS v3.2</span>
+                    </div>
+                </div>
+
+            </div>
+
+        </section>
+    </main>
+
+    <!-- Toast Notification -->
+    <div id="toast"
+        class="fixed bottom-5 right-5 z-50 transform translate-y-16 opacity-0 transition-all duration-300 pointer-events-none flex items-center gap-2 px-4 py-2.5 rounded-xl bg-slate-900 text-white text-xs border border-indigo-500/40 shadow-2xl">
+        <i data-lucide="info" class="w-4 h-4 text-indigo-400"></i>
+        <span id="toast-message">Notification message</span>
+    </div>
+
+    <!-- Settings Modal (custom, no alert/confirm) -->
+    <div id="settings-modal"
+        class="fixed inset-0 bg-black/70 backdrop-blur-xs hidden items-center justify-center z-50 p-4">
+        <div
+            class="bg-[#111728] border border-slate-700/80 rounded-2xl w-full max-w-md p-5 shadow-2xl text-xs space-y-4">
+            <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+                <h3 class="text-sm font-semibold text-white flex items-center gap-2">
+                    <i data-lucide="sliders" class="w-4 h-4 text-indigo-400"></i>
+                    Workspace Preferences
+                </h3>
+                <button onclick="closeSettingsModal()" class="text-slate-400 hover:text-white"><i data-lucide="x"
+                        class="w-4 h-4"></i></button>
+            </div>
+
+            <div class="space-y-3">
+                <div>
+                    <label class="block text-slate-400 mb-1">Khmer TTS Voice Engine</label>
+                    <select class="w-full bg-slate-800 border border-slate-700 rounded-lg p-2 text-slate-200">
+                        <option>Khmer Neural Natural Male (Phnom Penh)</option>
+                        <option>Khmer Neural Natural Female (Siem Reap)</option>
+                        <option>Khmer Classic Documentary Voice</option>
+                    </select>
+                </div>
+
+                <div>
+                    <label class="block text-slate-400 mb-1">Subtitle Font Styling</label>
+                    <select class="w-full bg-slate-800 border border-slate-700 rounded-lg p-2 text-slate-200">
+                        <option>Kantumruy Pro (Modern Rounded)</option>
+                        <option>Battambang (Classic Standard)</option>
+                        <option>Bayon Bold (Headline Poster)</option>
+                    </select>
+                </div>
+
+                <div class="flex items-center justify-between py-2 border-t border-slate-800">
+                    <div>
+                        <div class="font-medium text-slate-200">GPU Hardware Acceleration</div>
+                        <div class="text-[11px] text-slate-400">Speeds up AI Khmer voice rendering</div>
+                    </div>
+                    <input type="checkbox" checked class="rounded border-slate-700 bg-slate-800 text-indigo-600">
+                </div>
+            </div>
+
+            <div class="flex justify-end gap-2 pt-2 border-t border-slate-800">
+                <button onclick="closeSettingsModal()"
+                    class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300">Cancel</button>
+                <button onclick="saveSettings()"
+                    class="px-3.5 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-medium">Save
+                    Changes</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        /* Initialize Lucide Icons */
+        lucide.createIcons();
+
+        /* Application Data State */
+        const state = {
+            currentTime: 2.0, // seconds
+            duration: 30.0,
+            isPlaying: false,
+            isMuted: false,
+            isIsolated: false,
+            autoFit: false,
+            activeLanguage: 'en',
+            activeTab: 'video_01.mp4',
+            subtitles: [
+                {
+                    id: 'sub-1',
+                    selected: true,
+                    start: '00:00:02,000',
+                    end: '00:00:05,000',
+                    startSec: 2.0,
+                    endSec: 5.0,
+                    khmerText: 'សួស្តីអ្នករាល់គ្នា',
+                    voice: 'Male',
+                    status: 'Ready'
+                },
+                {
+                    id: 'sub-2',
+                    selected: false,
+                    start: '00:00:06,000',
+                    end: '00:00:10,000',
+                    startSec: 6.0,
+                    endSec: 10.0,
+                    khmerText: 'ខ្ញុំមកពីភ្នំពេញ',
+                    voice: 'Female',
+                    status: 'Ready'
+                },
+                {
+                    id: 'sub-3',
+                    selected: false,
+                    start: '00:00:11,000',
+                    end: '00:00:15,000',
+                    startSec: 11.0,
+                    endSec: 15.0,
+                    khmerText: 'ថ្ងៃនេះយើងនឹងបង្ហាញ...',
+                    voice: 'Male',
+                    status: 'Pending'
+                }
+            ]
+        };
+
+        /* Elements */
+        const subTableBody = document.getElementById('subtitle-table-body');
+        const playhead = document.getElementById('playhead');
+        const timecodeCurrent = document.getElementById('timecode-current');
+        const subOverlayText = document.getElementById('sub-overlay-text');
+        const previewCanvas = document.getElementById('preview-canvas');
+        const ctx = previewCanvas.getContext('2d');
+        const mainVideo = document.getElementById('main-video');
+        const noVideoPlaceholder = document.getElementById('no-video-placeholder');
+
+        /* Format Seconds to MM:SS.SS */
+        function formatTimecode(sec) {
+            const m = Math.floor(sec / 60);
+            const s = Math.floor(sec % 60);
+            const ms = Math.floor((sec % 1) * 100);
+            return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}.${String(ms).padStart(2, '0')}`;
+        }
+
+        function renderSubtitleRows() {
+            subTableBody.innerHTML = '';
+
+            state.subtitles.forEach((sub, index) => {
+                const tr = document.createElement('tr');
+                tr.className = `group hover:bg-slate-800/40 transition-colors ${sub.selected ? 'bg-indigo-950/20' : ''}`;
+                tr.dataset.id = sub.id;
+
+                const isReady = sub.status === 'Ready';
+
+                tr.innerHTML = `
+          <td class="py-2.5 px-3 text-center">
+            <input type="checkbox" ${sub.selected ? 'checked' : ''} onchange="toggleRowSelect('${sub.id}', this.checked)" class="rounded border-slate-700 bg-slate-800 text-indigo-600 focus:ring-0 focus:ring-offset-0 cursor-pointer" />
+          </td>
+          <td class="py-2.5 px-3 font-mono text-slate-300 text-[11px]">
+            <input type="text" value="${sub.start}" onchange="updateTimestamp('${sub.id}', 'start', this.value)" class="bg-transparent hover:bg-slate-800/80 focus:bg-slate-800 focus:border-indigo-500 border border-transparent rounded px-1.5 py-0.5 w-full font-mono outline-hidden" />
+          </td>
+          <td class="py-2.5 px-3 font-mono text-slate-300 text-[11px]">
+            <input type="text" value="${sub.end}" onchange="updateTimestamp('${sub.id}', 'end', this.value)" class="bg-transparent hover:bg-slate-800/80 focus:bg-slate-800 focus:border-indigo-500 border border-transparent rounded px-1.5 py-0.5 w-full font-mono outline-hidden" />
+          </td>
+          <td class="py-2.5 px-4 font-khmer text-slate-100 text-sm">
+            <input type="text" value="${sub.khmerText}" oninput="updateKhmerText('${sub.id}', this.value)" class="w-full bg-transparent hover:bg-slate-800/60 focus:bg-slate-800 focus:border-indigo-500 border border-transparent rounded px-2 py-1 outline-hidden font-khmer transition" />
+          </td>
+          <td class="py-2.5 px-3">
+            <div class="relative">
+              <select onchange="updateVoice('${sub.id}', this.value)" class="w-full bg-[#131a2c] hover:bg-slate-800 border border-slate-700/80 text-slate-200 text-xs rounded-lg px-2.5 py-1 appearance-none cursor-pointer pr-6 focus:border-indigo-500 outline-hidden">
+                <option value="Male" ${sub.voice === 'Male' ? 'selected' : ''}>👨 Male</option>
+                <option value="Female" ${sub.voice === 'Female' ? 'selected' : ''}>👩 Female</option>
+              </select>
+              <i data-lucide="chevron-down" class="w-3 h-3 text-slate-400 absolute right-2 top-2.5 pointer-events-none"></i>
+            </div>
+          </td>
+          <td class="py-2.5 px-3 text-center">
+            <span onclick="toggleStatus('${sub.id}')" class="cursor-pointer inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-medium transition ${isReady
+                        ? 'bg-emerald-950/40 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-900/40'
+                        : 'bg-amber-950/40 text-amber-400 border border-amber-500/30 hover:bg-amber-900/40'
+                    }">
+              <span>${isReady ? '✓ Ready' : '⌛ Pending'}</span>
+            </span>
+          </td>
+        `;
+                subTableBody.appendChild(tr);
+            });
+
+            lucide.createIcons();
+            updateTimelineTracks();
+        }
+
+        function updateTimelineTracks() {
+            const trackT1 = document.getElementById('track-t1');
+            if (!trackT1) return;
+
+            trackT1.innerHTML = '';
+            state.subtitles.forEach(sub => {
+                const leftPct = (sub.startSec / state.duration) * 100;
+                const widthPct = Math.max(4, ((sub.endSec - sub.startSec) / state.duration) * 100);
+
+                const block = document.createElement('div');
+                block.className = `absolute h-7 rounded-md flex items-center px-2 text-[10px] font-khmer truncate cursor-pointer transition shadow-sm ${sub.selected
+                        ? 'bg-indigo-600/80 text-white border border-indigo-300 ring-1 ring-indigo-400'
+                        : 'bg-indigo-950/70 border border-indigo-500/40 text-indigo-200 hover:bg-indigo-900/80'
+                    }`;
+                block.style.left = `${leftPct}%`;
+                block.style.width = `${widthPct}%`;
+                block.title = `${sub.start} - ${sub.end}: ${sub.khmerText}`;
+                block.textContent = sub.khmerText;
+
+                block.onclick = () => {
+                    seekTo(sub.startSec);
+                    selectSingleRow(sub.id);
+                };
+                trackT1.appendChild(block);
+            });
+        }
+
+        /* Row actions */
+        function toggleRowSelect(id, checked) {
+            const sub = state.subtitles.find(s => s.id === id);
+            if (sub) {
+                sub.selected = checked;
+                renderSubtitleRows();
+            }
+        }
+
+        function selectSingleRow(id) {
+            state.subtitles.forEach(s => s.selected = (s.id === id));
+            renderSubtitleRows();
+        }
+
+        function toggleSelectAll(el) {
+            state.subtitles.forEach(s => s.selected = el.checked);
+            renderSubtitleRows();
+        }
+
+        function updateKhmerText(id, text) {
+            const sub = state.subtitles.find(s => s.id === id);
+            if (sub) {
+                sub.khmerText = text;
+                updateActiveSubtitleDisplay();
+            }
+        }
+
+        function updateVoice(id, voice) {
+            const sub = state.subtitles.find(s => s.id === id);
+            if (sub) {
+                sub.voice = voice;
+                showToast(`Voice profile set to ${voice} for row.`);
+            }
+        }
+
+        function toggleStatus(id) {
+            const sub = state.subtitles.find(s => s.id === id);
+            if (sub) {
+                sub.status = sub.status === 'Ready' ? 'Pending' : 'Ready';
+                renderSubtitleRows();
+                showToast(`Status updated to ${sub.status}`);
+            }
+        }
+
+        function updateTimestamp(id, field, value) {
+            const sub = state.subtitles.find(s => s.id === id);
+            if (!sub) return;
+            sub[field] = value;
+            // parse approximate seconds: HH:MM:SS,mmm
+            try {
+                const parts = value.split(':');
+                if (parts.length === 3) {
+                    const secParts = parts[2].split(',');
+                    const seconds = parseInt(parts[0]) * 3600 + parseInt(parts[1]) * 60 + parseFloat(secParts[0] + '.' + (secParts[1] || '0'));
+                    if (field === 'start') sub.startSec = seconds;
+                    if (field === 'end') sub.endSec = seconds;
+                    updateTimelineTracks();
+                }
+            } catch (e) {
+                console.warn('Invalid time format');
+            }
+        }
+
+        function addNewSubtitleRow() {
+            const last = state.subtitles[state.subtitles.length - 1];
+            const startSec = last ? last.endSec + 1 : 0;
+            const endSec = startSec + 4;
+
+            const formatSec = (s) => `00:00:${String(Math.floor(s)).padStart(2, '0')},000`;
+
+            const newSub = {
+                id: 'sub-' + Date.now(),
+                selected: false,
+                start: formatSec(startSec),
+                end: formatSec(endSec),
+                startSec: startSec,
+                endSec: endSec,
+                khmerText: 'អរគុណច្រើន (សូមកែសម្រួល)',
+                voice: 'Male',
+                status: 'Pending'
+            };
+
+            state.subtitles.push(newSub);
+            renderSubtitleRows();
+            showToast('New subtitle row added!');
+        }
+
+        function editSelectedRow() {
+            const sel = state.subtitles.find(s => s.selected);
+            if (!sel) {
+                showToast('Please select a subtitle row first');
+                return;
+            }
+            showToast(`Editing: "${sel.khmerText}"`);
+        }
+
+        function deleteSelectedRows() {
+            const countBefore = state.subtitles.length;
+            state.subtitles = state.subtitles.filter(s => !s.selected);
+            if (state.subtitles.length === countBefore) {
+                showToast('No rows selected for deletion');
+            } else {
+                renderSubtitleRows();
+                showToast('Selected subtitles deleted');
+            }
+        }
+
+        function setAllVoices(voice) {
+            state.subtitles.forEach(s => s.voice = voice);
+            renderSubtitleRows();
+            showToast(`All voice profiles set to ${voice}`);
+        }
+
+        function seekTo(seconds) {
+            state.currentTime = Math.max(0, Math.min(seconds, state.duration));
+            timecodeCurrent.textContent = formatTimecode(state.currentTime);
+
+            // position playhead needle
+            const pct = (state.currentTime / state.duration) * 100;
+            playhead.style.left = `${pct}%`;
+
+            if (mainVideo.src && !isNaN(mainVideo.duration)) {
+                mainVideo.currentTime = state.currentTime;
+            }
+
+            updateActiveSubtitleDisplay();
+            drawPreview();
+        }
+
+        function updateActiveSubtitleDisplay() {
+            const currentSub = state.subtitles.find(s => state.currentTime >= s.startSec && state.currentTime <= s.endSec);
+            if (currentSub && currentSub.khmerText) {
+                subOverlayText.textContent = currentSub.khmerText;
+                subOverlayText.classList.remove('opacity-0');
+            } else {
+                subOverlayText.classList.add('opacity-0');
+            }
+        }
+
+        /* Interactive Timeline Click/Drag to Seek */
+        const timelineRuler = document.getElementById('timeline-ruler');
+        const tracksWrapper = document.getElementById('tracks-wrapper');
+
+        function handleTimelineSeek(e) {
+            const rect = tracksWrapper.getBoundingClientRect();
+            const clickX = e.clientX - rect.left;
+            const ratio = Math.max(0, Math.min(1, clickX / rect.width));
+            seekTo(ratio * state.duration);
+        }
+
+        tracksWrapper.addEventListener('click', handleTimelineSeek);
+        timelineRuler.addEventListener('click', handleTimelineSeek);
+
+        /* Playback Loop */
+        let animationFrameId = null;
+        let lastTimestamp = null;
+
+        function playbackLoop(timestamp) {
+            if (!state.isPlaying) return;
+            if (!lastTimestamp) lastTimestamp = timestamp;
+
+            const delta = (timestamp - lastTimestamp) / 1000;
+            lastTimestamp = timestamp;
+
+            state.currentTime += delta;
+            if (state.currentTime >= state.duration) {
+                state.currentTime = 0;
+            }
+
+            seekTo(state.currentTime);
+            animationFrameId = requestAnimationFrame(playbackLoop);
+        }
+
+        function togglePlay() {
+            state.isPlaying = !state.isPlaying;
+            const playIcon = document.getElementById('play-icon');
+
+            if (state.isPlaying) {
+                playIcon.setAttribute('data-lucide', 'pause');
+                lucide.createIcons();
+                lastTimestamp = null;
+                animationFrameId = requestAnimationFrame(playbackLoop);
+                if (mainVideo.src) mainVideo.play().catch(() => { });
+                showToast('Playback started');
+            } else {
+                playIcon.setAttribute('data-lucide', 'play');
+                lucide.createIcons();
+                if (animationFrameId) cancelAnimationFrame(animationFrameId);
+                if (mainVideo.src) mainVideo.pause();
+                showToast('Playback paused');
+            }
+        }
+
+        function stopPlayback() {
+            state.isPlaying = false;
+            const playIcon = document.getElementById('play-icon');
+            playIcon.setAttribute('data-lucide', 'play');
+            lucide.createIcons();
+            if (animationFrameId) cancelAnimationFrame(animationFrameId);
+            if (mainVideo.src) {
+                mainVideo.pause();
+                mainVideo.currentTime = 0;
+            }
+            seekTo(0);
+            showToast('Playback stopped');
+        }
+
+        function resizeCanvas() {
+            const rect = previewCanvas.parentElement.getBoundingClientRect();
+            previewCanvas.width = rect.width;
+            previewCanvas.height = rect.height;
+            drawPreview();
+        }
+        window.addEventListener('resize', resizeCanvas);
+
+        function drawPreview() {
+            if (mainVideo.src && !mainVideo.paused && !mainVideo.ended) {
+                // Video is rendered via HTML5 element
+                return;
+            }
+
+            const w = previewCanvas.width;
+            const h = previewCanvas.height;
+            if (!w || !h) return;
+
+            // Dark studio gradient background
+            const grad = ctx.createLinearGradient(0, 0, w, h);
+            grad.addColorStop(0, '#0c1222');
+            grad.addColorStop(1, '#070a14');
+            ctx.fillStyle = grad;
+            ctx.fillRect(0, 0, w, h);
+
+            // Subtle cyber grid
+            ctx.strokeStyle = 'rgba(99, 102, 241, 0.05)';
+            ctx.lineWidth = 1;
+            const step = 28;
+            for (let x = 0; x < w; x += step) {
+                ctx.beginPath();
+                ctx.moveTo(x, 0);
+                ctx.lineTo(x, h);
+                ctx.stroke();
+            }
+            for (let y = 0; y < h; y += step) {
+                ctx.beginPath();
+                ctx.moveTo(0, y);
+                ctx.lineTo(w, y);
+                ctx.stroke();
+            }
+
+            // Animated Sound Waves when playing
+            if (state.isPlaying) {
+                ctx.strokeStyle = 'rgba(129, 140, 248, 0.4)';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                const cy = h * 0.42;
+                for (let x = 0; x < w; x += 4) {
+                    const wave = Math.sin(x * 0.05 + state.currentTime * 6) * 16 * Math.sin(x / w * Math.PI);
+                    if (x === 0) ctx.moveTo(x, cy + wave);
+                    else ctx.lineTo(x, cy + wave);
+                }
+                ctx.stroke();
+            }
+        }
+
+        /* Video Upload & Handling */
+        const videoFileInput = document.getElementById('video-file-input');
+
+        function triggerVideoUpload() {
+            videoFileInput.click();
+        }
+
+        videoFileInput.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            const url = URL.createObjectURL(file);
+            mainVideo.src = url;
+            mainVideo.classList.remove('hidden');
+            previewCanvas.classList.add('hidden');
+            noVideoPlaceholder.classList.add('hidden');
+
+            mainVideo.onloadedmetadata = () => {
+                state.duration = mainVideo.duration || 30.0;
+                document.getElementById('timecode-total').textContent = formatTimecode(state.duration);
+                document.getElementById('video-resolution').textContent = `${mainVideo.videoWidth}x${mainVideo.videoHeight}`;
+                showToast(`Loaded video: ${file.name}`);
+                updateTimelineTracks();
+            };
+        });
+
+        function loadDemoBGM() {
+            showToast('Khmer Traditional & Ambient BGM Track Loaded');
+        }
+
+        function toggleIsolateBGM() {
+            state.isIsolated = !state.isIsolated;
+            const btn = document.getElementById('btn-isolate');
+            const label = document.getElementById('isolate-label');
+            if (state.isIsolated) {
+                btn.classList.add('bg-indigo-950/60', 'border-indigo-500');
+                label.textContent = 'BGM Isolated ✓';
+                showToast('AI Vocal Remover: BGM isolated successfully');
+            } else {
+                btn.classList.remove('bg-indigo-950/60', 'border-indigo-500');
+                label.textContent = 'Isolate BGM';
+                showToast('BGM track un-isolated');
+            }
+        }
+
+        function toggleMuteAudio() {
+            state.isMuted = !state.isMuted;
+            const btn = document.getElementById('btn-mute');
+            const label = document.getElementById('mute-label');
+            const icon = document.getElementById('mute-icon');
+
+            if (state.isMuted) {
+                btn.classList.add('bg-rose-950/50', 'border-rose-500');
+                label.textContent = 'Muted';
+                icon.setAttribute('data-lucide', 'mic');
+                mainVideo.muted = true;
+                showToast('Audio Muted');
+            } else {
+                btn.classList.remove('bg-rose-950/50', 'border-rose-500');
+                label.textContent = 'Mute Audio';
+                icon.setAttribute('data-lucide', 'mic-off');
+                mainVideo.muted = false;
+                showToast('Audio Unmuted');
+            }
+            lucide.createIcons();
+        }
+
+        function toggleAutoFit() {
+            state.autoFit = !state.autoFit;
+            const btnText = document.getElementById('autofit-text');
+            const btn = document.getElementById('btn-autofit');
+            if (state.autoFit) {
+                btnText.textContent = 'Auto-Fit: ON';
+                btn.classList.add('bg-amber-950/40', 'border-amber-500/50', 'text-amber-300');
+                showToast('Auto-Fit Dub Timestamps: Active');
+            } else {
+                btnText.textContent = 'Auto-Fit: OFF';
+                btn.classList.remove('bg-amber-950/40', 'border-amber-500/50', 'text-amber-300');
+                showToast('Auto-Fit: Disabled');
+            }
+        }
+
+        function syncTrackEnd() {
+            showToast('All Khmer audio blocks aligned with subtitle endpoints');
+        }
+
+        function mockTranscribe() {
+            showToast('🎙️ AI Khmer Speech Recognition analyzing video track...');
+            setTimeout(() => {
+                showToast('✅ Khmer Subtitle Transcription generated!');
+            }, 1500);
+        }
+
+        function generateAllAudio() {
+            showToast('🚀 Synthesizing Khmer Neural Voice for all segments...');
+
+            const pendingItems = state.subtitles.filter(s => s.status === 'Pending');
+            if (pendingItems.length === 0) {
+                showToast('All segments are already marked Ready!');
+                return;
+            }
+
+            let count = 0;
+            const interval = setInterval(() => {
+                if (count < pendingItems.length) {
+                    pendingItems[count].status = 'Ready';
+                    renderSubtitleRows();
+                    count++;
+                } else {
+                    clearInterval(interval);
+                    showToast('🎉 All Khmer Dub audio tracks synthesized successfully!');
+                }
+            }, 700);
+        }
+
+        /* Progress simulation on the queue */
+        setInterval(() => {
+            const proc = document.getElementById('proc-percent');
+            if (proc) {
+                let val = parseInt(proc.textContent);
+                val = (val >= 98) ? 42 : val + 1;
+                proc.textContent = `${val}%`;
+            }
+        }, 2000);
+
+        /* Video secondary tools */
+        let isFlipped = false;
+        function flipVideo() {
+            isFlipped = !isFlipped;
+            mainVideo.style.transform = isFlipped ? 'scaleX(-1)' : 'scaleX(1)';
+            previewCanvas.style.transform = isFlipped ? 'scaleX(-1)' : 'scaleX(1)';
+            showToast(isFlipped ? 'Video Horizontally Flipped' : 'Video Normal');
+        }
+
+        let currentRotation = 0;
+        function rotateVideo() {
+            currentRotation = (currentRotation + 90) % 360;
+            mainVideo.style.transform = `rotate(${currentRotation}deg)`;
+            showToast(`Rotated to ${currentRotation}°`);
+        }
+
+        function toggleVideoAspect() {
+            showToast('Aspect Ratio toggled: 16:9 / 9:16 vertical');
+        }
+
+        function toggleSafeMargin() {
+            showToast('Safe Margins guide overlay toggled');
+        }
+
+        function toggleTextTool() {
+            showToast('Khmer Typography styling panel toggled');
+        }
+
+        function toggleSubOverlay() {
+            subOverlayText.classList.toggle('hidden');
+            showToast('Subtitle overlay visibility toggled');
+        }
+
+        const subColors = ['bg-black/75 text-white', 'bg-indigo-950/90 text-indigo-100', 'bg-amber-950/90 text-amber-200'];
+        let colorIdx = 0;
+        function cycleSubColor() {
+            colorIdx = (colorIdx + 1) % subColors.length;
+            subOverlayText.className = `px-3 py-1 ${subColors[colorIdx]} backdrop-blur-sm rounded-md font-khmer text-sm md:text-base tracking-wide border border-white/10 shadow-xl text-center max-w-[90%]`;
+            showToast('Subtitle aesthetic style updated');
+        }
+
+        function updateTimelineZoom(val) {
+            document.getElementById('tracks-wrapper').style.transform = `scaleX(${val})`;
+            document.getElementById('tracks-wrapper').style.transformOrigin = 'left center';
+        }
+
+        /* Project Tabs */
+        document.querySelectorAll('.project-tab').forEach(tab => {
+            tab.addEventListener('click', () => {
+                document.querySelectorAll('.project-tab').forEach(t => {
+                    t.className = 'project-tab flex items-center gap-2 px-3 py-1.5 text-xs font-medium rounded-lg bg-slate-800/60 text-slate-400 border border-slate-700/50 hover:bg-slate-800 hover:text-slate-200 transition-all';
+                });
+                tab.className = 'project-tab active flex items-center gap-2 px-3 py-1.5 text-xs font-medium rounded-lg bg-indigo-600/30 text-indigo-200 border border-indigo-500/40 shadow-sm transition-all';
+                showToast(`Switched project workspace to ${tab.querySelector('span').textContent}`);
+            });
+        });
+
+        document.getElementById('add-tab-btn').addEventListener('click', () => {
+            const name = `video_0${document.querySelectorAll('.project-tab').length + 1}.mp4`;
+            showToast(`Created new project sequence: ${name}`);
+        });
+
+        /* Folder dropdown menu */
+        const folderMenuBtn = document.getElementById('folder-menu-btn');
+        const folderDropdown = document.getElementById('folder-dropdown');
+        folderMenuBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            folderDropdown.classList.toggle('hidden');
+        });
+        window.addEventListener('click', () => {
+            folderDropdown.classList.add('hidden');
+        });
+
+        /* Language Switcher */
+        function setLanguage(lang) {
+            state.activeLanguage = lang;
+            const enBtn = document.getElementById('lang-en');
+            const kmBtn = document.getElementById('lang-km');
+            if (lang === 'km') {
+                kmBtn.className = 'px-2 py-0.5 rounded-md text-[11px] font-medium bg-indigo-600 text-white shadow-sm transition';
+                enBtn.className = 'px-2 py-0.5 rounded-md text-[11px] font-medium text-slate-400 hover:text-white transition';
+                showToast('ប្តូរភាសាទៅជាភាសាខ្មែរជោគជ័យ');
+            } else {
+                enBtn.className = 'px-2 py-0.5 rounded-md text-[11px] font-medium bg-indigo-600 text-white shadow-sm transition';
+                kmBtn.className = 'px-2 py-0.5 rounded-md text-[11px] font-medium text-slate-400 hover:text-white transition';
+                showToast('Workspace language changed to English');
+            }
+        }
+
+        function toggleTheme() {
+            showToast('Theme optimized for Studio Dark Mode');
+        }
+
+        /* Modal dialogs */
+        function openSettingsModal() {
+            document.getElementById('settings-modal').classList.remove('hidden');
+            document.getElementById('settings-modal').classList.add('flex');
+        }
+        function closeSettingsModal() {
+            document.getElementById('settings-modal').classList.add('hidden');
+            document.getElementById('settings-modal').classList.remove('flex');
+        }
+        function saveSettings() {
+            closeSettingsModal();
+            showToast('Workspace settings saved');
+        }
+
+        /* Toast Notification Helper */
+        let toastTimeout = null;
+        function showToast(msg) {
+            const toast = document.getElementById('toast');
+            const toastMsg = document.getElementById('toast-message');
+            toastMsg.textContent = msg;
+
+            toast.classList.remove('opacity-0', 'translate-y-16');
+            toast.classList.add('opacity-100', 'translate-y-0');
+
+            if (toastTimeout) clearTimeout(toastTimeout);
+            toastTimeout = setTimeout(() => {
+                toast.classList.add('opacity-0', 'translate-y-16');
+                toast.classList.remove('opacity-100', 'translate-y-0');
+            }, 2600);
+        }
+
+        /* Booting Application */
+        window.addEventListener('load', () => {
+            renderSubtitleRows();
+            resizeCanvas();
+            seekTo(2.0); // Match screenshot starting at 2.0s
+        });
+    </script>
+</body>
+</html>
