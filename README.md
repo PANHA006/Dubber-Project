@@ -144,6 +144,9 @@ Dubber Project/
 ### ១. ដំឡើង Node Dependencies
 ```bash
 npm install
+
+# ធ្វើឱ្យសកម្ម Git Hook ការពារ Secret (ធ្វើតែម្ដង)
+npm run setup:hooks
 ```
 
 ### ២. រៀបចំឯកសារ `.env`
@@ -239,6 +242,28 @@ npm run test:pipeline
 
 > [!TIP]
 > ឯកសារ `package-lock.json` **ត្រូវតែ Commit ចូល Git** ដើម្បីធានាថាកំណែ Library ដូចគ្នានៅគ្រប់កុំព្យូទ័រ។
+
+### 🛡️ Pre-commit Secret Scanner (ការពារការ Commit សម្ងាត់)
+
+គម្រោងមាន **Git Hook** ដែលពិនិត្យរាល់ការ Commit ដោយស្វ័យប្រវត្តិ និង **បដិសេធ** ការ Commit ប្រសិនបើរកឃើញ៖
+- ឯកសារ `.env` ពិត (អនុញ្ញាតតែ `.env.example` ប៉ុណ្ណោះ)
+- API Keys ដូចជា Groq (`gsk_...`), Google (`AQ....`, `AIza...`), OpenAI (`sk-...`)
+- Tokens ដូចជា GitHub (`ghp_...`), Slack (`xox...`)
+- Private Keys និងការកំណត់ Credential ត្រង់ៗក្នុងកូដ
+
+**ការធ្វើឱ្យសកម្ម (ធ្វើតែម្ដងក្នុងមួយ Clone)៖**
+```bash
+npm run setup:hooks
+```
+
+បន្ទាប់ពីនេះ រាល់ `git commit` នឹងដំណើរការការពិនិត្យជាមុន៖
+```text
+[pre-commit] Scanning staged changes for secrets...
+[pre-commit] No secrets detected. OK
+```
+
+> [!WARNING]
+> ប្រសិនបើ Hook រារាំងការ Commit ដោយខុស (False Positive) សូមពិនិត្យបន្ទាត់ដែលបានរាយ ហើយលុបតម្លៃសម្ងាត់ចេញ ឬផ្លាស់វាទៅ `.env`។ ការបង្វែរ Hook (`git commit --no-verify`) **មិនត្រូវបានណែនាំទេ** លុះត្រាតែជាករណីអាសន្នពិតប្រាកដ។
 
 ---
 

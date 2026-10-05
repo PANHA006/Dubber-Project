@@ -3,6 +3,25 @@ const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '../.env') });
 const gemini = require('../src/services/gemini.service');
 
+/**
+ * Working directory that holds the input bilingual subtitle file and where the
+ * translated outputs are written.
+ *
+ * Resolution order (first match wins):
+ *   1. --dir=<path>          command-line argument
+ *   2. SUBTITLE_DIR          environment variable (.env)
+ *   3. ./subtitle_data       project-local default
+ */
+function resolveWorkDir() {
+  const argDir = process.argv.find((a) => a.startsWith('--dir='));
+  if (argDir) return path.resolve(argDir.slice('--dir='.length));
+  if (process.env.SUBTITLE_DIR) return path.resolve(process.env.SUBTITLE_DIR);
+  return path.join(__dirname, '..', 'subtitle_data');
+}
+
+const WORK_DIR = resolveWorkDir();
+const IN_FILE = path.join(WORK_DIR, process.env.SUBTITLE_INPUT || 'subtitle_bilingual.txt');
+
 function parseTimestampToSec(ts) {
   if (!ts) return 0;
   const parts = ts.trim().split(':');
@@ -26,7 +45,15 @@ function secToSRT(sec) {
 
 async function run() {
   console.log('--- Loading Subtitle Files ---');
-  const biFile = 'd:/Desktop/Subtitle/subtitle_bilingual (8).txt';
+  console.log(`Working dir: ${WORK_DIR}`);
+  const biFile = IN_FILE;
+  if (!fs.existsSync(biFile)) {
+    throw new Error(
+      `Input file not found: ${biFile}\n` +
+      'Pass a folder with --dir=<path>, set SUBTITLE_DIR in .env, ' +
+      'or place "subtitle_bilingual.txt" inside ./subtitle_data.'
+    );
+  }
   const rawBi = fs.readFileSync(biFile, 'utf8').split('\n').filter(l => l.trim().length > 0);
   
   const subtitles = [];
@@ -47,7 +74,7 @@ async function run() {
 
   console.log(`Loaded ${subtitles.length} subtitle items.`);
 
-  const cacheFile = 'd:/Desktop/Subtitle/translated_cache.json';
+  const cacheFile = path.join(WORK_DIR, 'translated_cache.json');
   let cache = {};
   if (fs.existsSync(cacheFile)) {
     try {
@@ -185,7 +212,7 @@ ${promptLines}`;
   console.log('\n--- Writing Output Files ---');
 
   // 1. subtitle_khmer.txt: ID|START|END|ORIG (where ORIG is Khmer)
-  const khmerTxtPath = 'd:/Desktop/Subtitle/subtitle_khmer.txt';
+  const khmerTxtPath = path.join(WORK_DIR, 'subtitle_khmer.txt');
   const khmerTxtLines = ['ID|START|END|ORIG'];
   for (const item of subtitles) {
     const kh = cache[item.id]?.khmerText || item.en;
@@ -195,7 +222,7 @@ ${promptLines}`;
   console.log(`✅ Saved: ${khmerTxtPath}`);
 
   // 2. subtitle_bilingual_khmer.txt: ID|START|END|ORIG|TRANS
-  const biKhmerPath = 'd:/Desktop/Subtitle/subtitle_bilingual_khmer.txt';
+  const biKhmerPath = path.join(WORK_DIR, 'subtitle_bilingual_khmer.txt');
   const biKhmerLines = ['ID|START|END|ORIG|TRANS'];
   for (const item of subtitles) {
     const kh = cache[item.id]?.khmerText || item.en;
@@ -205,7 +232,7 @@ ${promptLines}`;
   console.log(`✅ Saved: ${biKhmerPath}`);
 
   // 3. subtitle_khmer.srt: Standard SubRip SRT
-  const srtPath = 'd:/Desktop/Subtitle/subtitle_khmer.srt';
+  const srtPath = path.join(WORK_DIR, 'subtitle_khmer.srt');
   const srtBlocks = [];
   let srtIdx = 1;
   for (const item of subtitles) {
@@ -218,7 +245,7 @@ ${promptLines}`;
   fs.writeFileSync(srtPath, srtBlocks.join('\n'), 'utf8');
   console.log(`✅ Saved: ${srtPath}`);
 
-  console.log('\n🎉 ALL DONE! 395 subtitles successfully translated and exported.');
+  console.log(`\n🎉 ALL DONE! ${subtitles.length} subtitles translated and exported to ${WORK_DIR}`);
 }
 
 run().catch(err => {
