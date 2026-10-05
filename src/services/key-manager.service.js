@@ -8,6 +8,7 @@ class KeyManagerService {
   constructor() {
     this.keyStates = {};
     this.roundRobinIndex = 0;
+    this.knownSessionKeys = new Set();
     this.loadState();
   }
 
@@ -32,10 +33,20 @@ class KeyManagerService {
     }
   }
 
-  purgeExpired() {
+  purgeExpired(customApiKey = null) {
     const now = Date.now();
+    const configured = new Set(this.getConfiguredKeys(customApiKey));
     let modified = false;
+
     for (const [keyHash, state] of Object.entries(this.keyStates)) {
+      // Drop entries for keys that are no longer configured in .env / Settings,
+      // otherwise .key-status.json keeps growing with stale keys forever.
+      if (!configured.has(keyHash)) {
+        delete this.keyStates[keyHash];
+        modified = true;
+        continue;
+      }
+      // Keep permanent blocks until the key is removed or re-added.
       if (state.status === 'DENIED_ACCESS' || state.lockedUntil === Infinity) {
         continue;
       }
@@ -44,6 +55,7 @@ class KeyManagerService {
         modified = true;
       }
     }
+
     if (modified) {
       this.saveState();
     }
@@ -98,7 +110,7 @@ class KeyManagerService {
     const clientKeys = this.parseKeys(customApiKey);
     const envKeys = this.readEnvKeys();
     
-    const all = [...clientKeys, ...envKeys];
+    const all = [...clientKeys, ...envKeys, ...this.knownSessionKeys];
     const unique = [];
     for (const k of all) {
       if (!unique.includes(k)) unique.push(k);
@@ -107,7 +119,7 @@ class KeyManagerService {
   }
 
   getActiveKey(customApiKey = null) {
-    this.purgeExpired();
+    this.purgeExpired(customApiKey);
     const keys = this.getConfiguredKeys(customApiKey);
     if (keys.length === 0) {
       throw new Error('GEMINI_API_KEY មិនទាន់ត្រូវបានកំណត់ទេ។ សូមបញ្ចូល API Key ក្នុង Settings ឬក្នុងឯកសារ .env');
@@ -151,6 +163,9 @@ class KeyManagerService {
   }
 
   markKeyExhausted(key, err) {
+    if (key && typeof key === 'string' && key.length > 5) {
+      this.knownSessionKeys.add(key);
+    }
     const errStr = (err && (err.message || JSON.stringify(err))) || '';
     
     const isDenied = errStr.includes('PERMISSION_DENIED') ||
@@ -217,7 +232,7 @@ class KeyManagerService {
 
     let nextKeyInfo = null;
     try {
-      nextKeyInfo = this.getActiveKey();
+      nextKeyInfo = this.getActiveKey(key);
     } catch (_) {
       nextKeyInfo = null;
     }
@@ -235,7 +250,7 @@ class KeyManagerService {
   }
 
   getStatusSummary(customApiKey = null) {
-    this.purgeExpired();
+    this.purgeExpired(customApiKey);
     const keys = this.getConfiguredKeys(customApiKey);
     const now = Date.now();
     return keys.map(k => {
@@ -262,7 +277,8 @@ class KeyManagerService {
 
   logPoolStatus(customApiKey = null) {
     const { formatTerminalLog, colors } = require('../utils/terminal-logger');
-    this.purgeExpired();
+    const dailyQuotaPerKey = Number(process.env.GEMINI_DAILY_QUOTA_PER_KEY) || 20;
+    this.purgeExpired(customApiKey);
     const summary = this.getStatusSummary(customApiKey);
     const total = summary.length;
     const readyCount = summary.filter(s => s.status === 'READY').length;
@@ -288,7 +304,7 @@ class KeyManagerService {
       }
       console.log(`   ${colors.dim}↳${colors.reset} Key ${idx + 1}: [${colors.bright}${item.keyId}${colors.reset}] -> ${statusStr}`);
     });
-    console.log(`   ${colors.dim}↳${colors.reset} ${colors.bright}Summary:${colors.reset} ${colors.green}${readyCount}/${total} keys ready to use!${colors.reset} (Total daily quota: ${healthyCount * 20} requests)`);
+    console.log(`   ${colors.dim}↳${colors.reset} ${colors.bright}Summary:${colors.reset} ${colors.green}${readyCount}/${total} keys ready to use!${colors.reset} (Total daily quota: ${healthyCount * dailyQuotaPerKey} requests)`);
   }
 }
 

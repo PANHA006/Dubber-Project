@@ -21,10 +21,14 @@ function errorHandler(err, req, res, next) {
  * 404 Not Found Middleware for API routes
  */
 function notFoundHandler(req, res, next) {
+  const message = `Endpoint not found: ${req.method} ${req.originalUrl}`;
+  // Keep the exact same response shape as errorHandler so the client can always
+  // read a top-level `message` field regardless of the status code.
   res.status(404).json({
     success: false,
+    message,
     error: {
-      message: `Endpoint not found: ${req.method} ${req.originalUrl}`,
+      message,
     },
   });
 }

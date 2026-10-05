@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Professional ANSI Colorized Terminal Logger for DAI Dubber Pro
  */
 
@@ -59,7 +59,49 @@ function formatTerminalLog(category = 'INFO', message = '', details = null) {
   }
 }
 
+/**
+ * Format real-time progress bar with ANSI color blocks: [██████████░░░░░░░░░░] 50%
+ */
+function formatTerminalProgress(category = 'PROGRESS', current = 0, total = 100, message = '', details = null) {
+  const now = new Date();
+  const time = now.toTimeString().split(' ')[0] + '.' + String(now.getMilliseconds()).padStart(3, '0');
+
+  const safeTotal = Math.max(1, Number(total) || 1);
+  const safeCurrent = Math.min(safeTotal, Math.max(0, Number(current) || 0));
+  const pct = Math.min(100, Math.max(0, Math.round((safeCurrent / safeTotal) * 100)));
+
+  const barLength = 20;
+  const filledLength = Math.round((pct / 100) * barLength);
+  const emptyLength = Math.max(0, barLength - filledLength);
+  const filledBar = '█'.repeat(filledLength);
+  const emptyBar = '░'.repeat(emptyLength);
+
+  let barColor = colors.yellow;
+  let icon = '⏳';
+  if (pct >= 100) {
+    barColor = colors.green;
+    icon = '✅';
+  } else if (pct >= 50) {
+    barColor = colors.cyan;
+  }
+
+  const categoryBadge = `${colors.yellow}${colors.bright}[${category}]${colors.reset}`;
+  const timeBadge = `${colors.gray}[${time}]${colors.reset}`;
+  const progressBar = `${barColor}[${filledBar}${colors.dim}${emptyBar}${colors.reset}${barColor}]${colors.reset}`;
+  const pctStr = `${colors.bright}${String(pct).padStart(3, ' ')}%${colors.reset} (${safeCurrent}/${safeTotal})`;
+
+  console.log(`${timeBadge} ${icon} ${categoryBadge} ${progressBar} ${pctStr} ${message}`);
+
+  if (details && typeof details === 'object' && Object.keys(details).length > 0) {
+    const detailStr = Object.entries(details)
+      .map(([k, v]) => `${colors.cyan}${k}:${colors.reset} ${v}`)
+      .join(' | ');
+    console.log(`   ${colors.dim}↳ ${detailStr}${colors.reset}`);
+  }
+}
+
 module.exports = {
   formatTerminalLog,
+  formatTerminalProgress,
   colors
 };

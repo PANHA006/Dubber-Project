@@ -1,5 +1,5 @@
 /**
- * Dubber Service - Handles dubbing logic, voice synthesis, audio processing, etc.
+ * Dubber Service - Reports project/system status for the dubber platform.
  */
 
 class DubberService {
@@ -13,30 +13,12 @@ class DubberService {
       timestamp: new Date().toISOString(),
       supportedLanguages: ['km-KH (Khmer)', 'en-US (English)', 'fr-FR (French)', 'zh-CN (Chinese)'],
       version: '1.0.0',
+      transcriptionEngine: process.env.TRANSCRIPTION_ENGINE || 'whisper',
+      whisperModel: process.env.WHISPER_MODEL || 'base',
+      hasGroqKey: Boolean(process.env.GROQ_API_KEY && process.env.GROQ_API_KEY.trim()),
     };
   }
 
-  /**
-   * Mock / Placeholder for dubbing job creation
-   */
-  async createDubbingJob(data) {
-    const { title, targetLanguage, sourceText } = data;
-    
-    if (!title) {
-      const error = new Error('Title is required');
-      error.statusCode = 400;
-      throw error;
-    }
-
-    return {
-      jobId: `dub_${Date.now()}`,
-      title,
-      targetLanguage: targetLanguage || 'km-KH',
-      sourceText: sourceText || '',
-      status: 'pending',
-      createdAt: new Date().toISOString(),
-    };
-  }
 }
 
 module.exports = new DubberService();
