@@ -7,15 +7,6 @@ import { logToTerminal } from './logger.js';
 
 let animationFrameId = null;
 let lastTimestamp = null;
-let isFlipped = false;
-let currentRotation = 0;
-let subColorIndex = 0;
-
-const subColorStyles = [
-  'bg-black/75 text-white border-white/10',
-  'bg-indigo-950/90 text-indigo-100 border-indigo-500/30',
-  'bg-amber-950/90 text-amber-200 border-amber-500/30'
-];
 
 export function formatTimecodeDisplay(sec) {
   const m = Math.floor(sec / 60);
@@ -24,19 +15,386 @@ export function formatTimecodeDisplay(sec) {
   return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}.${String(ms).padStart(2, '0')}`;
 }
 
+export async function uploadVideoFileToServer(file) {
+  if (!file) return;
+  try {
+    state.isUploadingVideo = true;
+    logToTerminal('CLIENT:VIDEO_UPLOAD', `Uploading video "${file.name}" to server storage/videos...`);
+    const formData = new FormData();
+    formData.append('video', file);
+
+    const res = await fetch('/api/video/upload', {
+      method: 'POST',
+      body: formData
+    });
+    const result = await res.json();
+    if (res.ok && result.success && result.data) {
+      state.videoUrl = result.data.videoUrl;
+      state.videoName = result.data.originalName || file.name;
+      logToTerminal('CLIENT:VIDEO_PERSISTED', `Video saved to server: ${result.data.videoUrl} (${result.data.sizeMb} MB)`);
+      window.triggerProjectAutoSave?.();
+    } else {
+      console.warn('Video upload response not ok:', result);
+    }
+  } catch (err) {
+    console.warn('Background video upload failed:', err);
+  } finally {
+    state.isUploadingVideo = false;
+  }
+}
+
+export function loadVideoFromUrl(url, name = '', duration = 0) {
+  const mainVideo = document.getElementById('main-video');
+  if (!mainVideo || !url) return;
+
+  state.videoUrl = url;
+  if (name) state.videoName = name;
+  if (duration > 0) {
+    state.duration = duration;
+    const totalElem = document.getElementById('timecode-total');
+    if (totalElem) totalElem.textContent = formatTimecodeDisplay(duration);
+  }
+
+  mainVideo.src = url;
+  mainVideo.load();
+  mainVideo.classList.remove('hidden');
+  document.getElementById('preview-canvas')?.classList.add('hidden');
+  document.getElementById('no-video-placeholder')?.classList.add('hidden');
+
+  const btnTranscribe = document.getElementById('btn-transcribe');
+  if (btnTranscribe) {
+    btnTranscribe.removeAttribute('disabled');
+    btnTranscribe.classList.remove('opacity-50', 'cursor-not-allowed');
+  }
+
+  mainVideo.onloadedmetadata = () => {
+    state.duration = mainVideo.duration || duration || 0.0;
+    const totalElem = document.getElementById('timecode-total');
+    if (totalElem) totalElem.textContent = formatTimecodeDisplay(state.duration);
+    const resElem = document.getElementById('video-resolution');
+    if (resElem) resElem.textContent = `${mainVideo.videoWidth}x${mainVideo.videoHeight}`;
+    updateCancelVideoBtnVisibility();
+    state.emit('durationChanged', state.duration);
+    logToTerminal('CLIENT:VIDEO_RESTORE', `Video preview restored from server storage: "${state.videoName || url}" (${state.duration.toFixed(1)}s)`);
+  };
+}
+
+/**
+ * Switch preview mode between 'before' (original video) and 'after' (dubbed video)
+ * Seamlessly preserves current timestamp so user can compare at the exact same scene
+ */
+export function switchPreviewMode(mode) {
+  const mainVideo = document.getElementById('main-video');
+  const btnBefore = document.getElementById('btn-preview-before');
+  const btnAfter = document.getElementById('btn-preview-after');
+  const resElem = document.getElementById('video-resolution');
+
+  if (mode === 'after') {
+    if (!state.dubbedVideoUrl) {
+      window.showToast?.('⚠️ មិនទាន់មានវីដេអូ Dubbed នៅឡើយទេ! សូមចុចប៊ូតុង [Generate Video] ខាងក្រោមជាមុនសិន');
+      return;
+    }
+
+    if (state.previewMode === 'after' && mainVideo && mainVideo.src.includes(state.dubbedVideoUrl)) return;
+
+    const curTime = mainVideo ? mainVideo.currentTime : state.currentTime;
+    const wasPlaying = mainVideo ? !mainVideo.paused : false;
+
+    state.previewMode = 'after';
+    stopDubVoicePlayback();
+
+    // Update switcher styling
+    if (btnAfter) {
+      btnAfter.className = 'px-2.5 py-0.5 rounded-md text-[11px] font-medium transition bg-emerald-600 text-white shadow-xs cursor-pointer active:scale-95';
+    }
+    if (btnBefore) {
+      btnBefore.className = 'px-2.5 py-0.5 rounded-md text-[11px] font-medium transition text-slate-400 hover:text-slate-200 hover:bg-slate-800/60 cursor-pointer active:scale-95';
+    }
+    if (resElem) {
+      resElem.textContent = 'Dubbed HD';
+      resElem.className = 'text-[10px] text-emerald-300 bg-emerald-950/60 px-1.5 py-0.5 rounded border border-emerald-500/40 font-medium';
+    }
+
+    if (mainVideo) {
+      mainVideo.src = state.dubbedVideoUrl;
+      const onLoaded = () => {
+        mainVideo.currentTime = curTime;
+        if (wasPlaying) mainVideo.play().catch(() => {});
+        mainVideo.removeEventListener('loadedmetadata', onLoaded);
+      };
+      mainVideo.addEventListener('loadedmetadata', onLoaded);
+      mainVideo.load();
+    }
+
+    window.showToast?.('✨ បានប្តូរទៅមើលវីដេអូ Dubbed (សំឡេងខ្មែរ AI)');
+    logToTerminal('CLIENT:PREVIEW_SWITCH', `Switched preview mode to AFTER (Dubbed Video: ${state.dubbedVideoUrl})`);
+  } else {
+    // mode === 'before'
+    if (state.previewMode === 'before' && mainVideo && mainVideo.src.includes(state.videoUrl)) return;
+
+    const curTime = mainVideo ? mainVideo.currentTime : state.currentTime;
+    const wasPlaying = mainVideo ? !mainVideo.paused : false;
+
+    state.previewMode = 'before';
+
+    // Update switcher styling
+    if (btnBefore) {
+      btnBefore.className = 'px-2.5 py-0.5 rounded-md text-[11px] font-medium transition bg-indigo-600 text-white shadow-xs cursor-pointer active:scale-95';
+    }
+    if (btnAfter) {
+      btnAfter.className = 'px-2.5 py-0.5 rounded-md text-[11px] font-medium transition text-slate-400 hover:text-slate-200 hover:bg-slate-800/60 cursor-pointer active:scale-95';
+    }
+    if (resElem) {
+      resElem.textContent = '1080p HD';
+      resElem.className = 'text-[10px] text-slate-400 bg-slate-800/80 px-1.5 py-0.5 rounded border border-slate-700/60';
+    }
+
+    if (mainVideo && state.videoUrl) {
+      mainVideo.src = state.videoUrl;
+      const onLoaded = () => {
+        mainVideo.currentTime = curTime;
+        if (wasPlaying) mainVideo.play().catch(() => {});
+        mainVideo.removeEventListener('loadedmetadata', onLoaded);
+      };
+      mainVideo.addEventListener('loadedmetadata', onLoaded);
+      mainVideo.load();
+    }
+
+    window.showToast?.('🎬 បានប្តូរទៅមើលវីដេអូដើម (Original Video)');
+    logToTerminal('CLIENT:PREVIEW_SWITCH', `Switched preview mode to BEFORE (Original Video: ${state.videoUrl})`);
+  }
+}
+
+/**
+ * Show or hide the Cancel/Remove video button based on whether a video is active
+ */
+export function updateCancelVideoBtnVisibility() {
+  const btn = document.getElementById('btn-cancel-video');
+  if (!btn) return;
+  if (state.videoUrl || state.currentVideoFile) {
+    btn.classList.remove('hidden');
+    btn.classList.add('flex');
+    window.lucide?.createIcons();
+  } else {
+    btn.classList.add('hidden');
+    btn.classList.remove('flex');
+  }
+}
+
+/**
+ * Cancel and remove current video from workspace to allow user to work on another video
+ */
+export async function cancelCurrentVideo() {
+  if (!state.videoUrl && !state.currentVideoFile) {
+    window.showToast?.('មិនមានវីដេអូសម្រាប់លុប/បោះបង់ទេ');
+    return;
+  }
+
+  const confirmed = window.confirm(
+    'តើលោកអ្នកពិតជាចង់បោះបង់ និងដកវីដេអូនេះចេញ ដើម្បីធ្វើការជាមួយវីដេអូថ្មីមែនទេ?\n(រាល់ទិន្នន័យ Subtitles បច្ចុប្បន្ននឹងត្រូវសម្អាត ដើម្បីរៀបចំសម្រាប់វីដេអូថ្មី)'
+  );
+  if (!confirmed) return;
+
+  try {
+    // 1. Stop playback & audio
+    stopPlayback();
+    stopDubVoicePlayback();
+
+    const mainVideo = document.getElementById('main-video');
+    if (mainVideo) {
+      mainVideo.pause();
+      mainVideo.removeAttribute('src');
+      mainVideo.load();
+      mainVideo.classList.add('hidden');
+    }
+
+    // 2. Show canvas & placeholder
+    document.getElementById('preview-canvas')?.classList.remove('hidden');
+    document.getElementById('no-video-placeholder')?.classList.remove('hidden');
+
+    // 3. Reset file input & UI labels
+    const videoInput = document.getElementById('video-file-input');
+    if (videoInput) videoInput.value = '';
+
+    const resElem = document.getElementById('video-resolution');
+    if (resElem) {
+      resElem.textContent = '1080p HD';
+      resElem.className = 'text-[10px] text-slate-400 bg-slate-800/80 px-1.5 py-0.5 rounded border border-slate-700/60';
+    }
+
+    const curTimeElem = document.getElementById('timecode-current');
+    if (curTimeElem) curTimeElem.textContent = '00:00.00';
+
+    const totalTimeElem = document.getElementById('timecode-total');
+    if (totalTimeElem) totalTimeElem.textContent = '00:00.00';
+
+    const miniProgress = document.getElementById('video-preview-progress');
+    if (miniProgress) miniProgress.style.width = '0%';
+
+    const miniThumb = document.getElementById('video-preview-thumb');
+    if (miniThumb) miniThumb.style.left = '0%';
+
+    const subOverlay = document.getElementById('sub-overlay-text');
+    if (subOverlay) subOverlay.textContent = '';
+
+    const btnTranscribe = document.getElementById('btn-transcribe');
+    if (btnTranscribe) {
+      btnTranscribe.setAttribute('disabled', 'true');
+      btnTranscribe.classList.add('opacity-50', 'cursor-not-allowed');
+    }
+
+    // 4. Switch preview mode back to 'before'
+    if (window.switchPreviewMode) {
+      window.switchPreviewMode('before');
+    }
+
+    // 5. Reset state
+    state.videoUrl = null;
+    state.videoName = '';
+    state.currentVideoFile = null;
+    state.dubbedVideoUrl = null;
+    state.duration = 0.0;
+    state.currentTime = 0.0;
+    state.subtitles = [];
+    state.isPlaying = false;
+
+    // 6. Update Cancel button visibility
+    updateCancelVideoBtnVisibility();
+
+    // 7. Re-render Subtitle Table (shows empty state)
+    window.renderSubtitleTable?.();
+
+    // 8. Clear localStorage & save empty project to server
+    try {
+      localStorage.removeItem('dubber_autosave_project');
+    } catch (_) {}
+
+    if (window.triggerProjectAutoSave) {
+      window.triggerProjectAutoSave(true, true);
+    } else {
+      fetch('/api/project/save', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          isExplicitClear: true,
+          version: '1.0.0',
+          savedAt: new Date().toISOString(),
+          video: { name: '', videoUrl: null, dubbedVideoUrl: null, duration: 0, previewMode: 'before' },
+          subtitles: [],
+          dubbingSettings: state.dubbingSettings || {}
+        })
+      }).catch(e => console.warn('Failed to clear server project:', e));
+    }
+
+    logToTerminal('CLIENT:VIDEO_CANCELED', 'Current video removed from workspace. Ready for new video import.');
+    window.showToast?.('🗑️ បានដកវីដេអូចេញរួចរាល់! លោកអ្នកអាចជ្រើសរើសវីដេអូថ្មីមកធ្វើការបាន។');
+  } catch (err) {
+    console.error('Error canceling video:', err);
+    window.showToast?.(`❌ បរាជ័យក្នុងការដកវីដេអូ៖ ${err.message}`);
+  }
+}
+
+if (typeof window !== 'undefined') {
+  window.loadVideoFromUrl = loadVideoFromUrl;
+  window.uploadVideoFileToServer = uploadVideoFileToServer;
+  window.switchPreviewMode = switchPreviewMode;
+  window.cancelCurrentVideo = cancelCurrentVideo;
+  window.updateCancelVideoBtnVisibility = updateCancelVideoBtnVisibility;
+}
+
 export function initVideoPlayer() {
   const mainVideo = document.getElementById('main-video');
   const videoInput = document.getElementById('video-file-input');
   const previewCanvas = document.getElementById('preview-canvas');
   const playerViewport = document.getElementById('player-viewport');
 
+  // Initial cancel button visibility check
+  updateCancelVideoBtnVisibility();
+
   // 1. Click on player screen to toggle Play/Pause
   if (playerViewport) {
     playerViewport.style.cursor = 'pointer';
     playerViewport.addEventListener('click', (e) => {
-      // Don't toggle if clicking on specific buttons/tools
-      if (e.target.closest('button') || e.target.closest('input')) return;
+      // Don't toggle if clicking on specific buttons/tools or placeholder
+      if (e.target.closest('button') || e.target.closest('input') || e.target.closest('#no-video-placeholder')) return;
       togglePlay();
+    });
+  }
+
+  // 1.1. Click on empty state placeholder to open file picker directly
+  const placeholder = document.getElementById('no-video-placeholder');
+  if (placeholder && videoInput) {
+    placeholder.addEventListener('click', (e) => {
+      e.stopPropagation();
+      videoInput.click();
+    });
+  }
+
+  // 1.2. Mini Interactive Timeline Scrubber
+  const miniTimeline = document.getElementById('video-preview-timeline-wrapper');
+  const miniProgress = document.getElementById('video-preview-progress');
+  const miniThumb = document.getElementById('video-preview-thumb');
+  const miniTooltip = document.getElementById('video-preview-tooltip');
+
+  function updateMiniTimeline(time) {
+    if (!miniProgress) return;
+    if (!state.duration || state.duration <= 0) {
+      miniProgress.style.width = '0%';
+      if (miniThumb) miniThumb.style.left = '0%';
+      return;
+    }
+    const pct = Math.max(0, Math.min(100, (time / state.duration) * 100));
+    miniProgress.style.width = `${pct}%`;
+    if (miniThumb) miniThumb.style.left = `${pct}%`;
+  }
+
+  state.on('timeUpdated', (time) => {
+    updateMiniTimeline(time);
+  });
+
+  state.on('durationChanged', () => {
+    updateMiniTimeline(state.currentTime);
+  });
+
+  if (miniTimeline) {
+    let isDragging = false;
+    const handleSeek = (e) => {
+      if (!state.duration || state.duration <= 0) return;
+      const rect = miniTimeline.getBoundingClientRect();
+      if (rect.width <= 0) return;
+      const clickX = Math.max(0, Math.min(e.clientX - rect.left, rect.width));
+      const seekPercent = clickX / rect.width;
+      const targetTime = seekPercent * state.duration;
+      seekTo(targetTime);
+    };
+
+    miniTimeline.addEventListener('mousedown', (e) => {
+      e.stopPropagation();
+      isDragging = true;
+      handleSeek(e);
+    });
+
+    miniTimeline.addEventListener('mousemove', (e) => {
+      if (!state.duration || state.duration <= 0) return;
+      const rect = miniTimeline.getBoundingClientRect();
+      if (rect.width <= 0) return;
+      const mouseX = Math.max(0, Math.min(e.clientX - rect.left, rect.width));
+      const hoverPct = mouseX / rect.width;
+      const hoverTime = hoverPct * state.duration;
+      if (miniTooltip) {
+        miniTooltip.style.left = `${mouseX}px`;
+        miniTooltip.textContent = formatTimecodeDisplay(hoverTime);
+      }
+    });
+
+    window.addEventListener('mousemove', (e) => {
+      if (isDragging) {
+        handleSeek(e);
+      }
+    });
+
+    window.addEventListener('mouseup', () => {
+      isDragging = false;
     });
   }
 
@@ -47,6 +405,7 @@ export function initVideoPlayer() {
       if (!file) return;
 
       state.currentVideoFile = file;
+      state.videoName = file.name;
       logToTerminal('CLIENT:STATE', `Selected video file: "${file.name}"`, {
         size: `${(file.size / (1024 * 1024)).toFixed(2)} MB`,
         type: file.type || 'video/mp4'
@@ -58,6 +417,9 @@ export function initVideoPlayer() {
       previewCanvas?.classList.add('hidden');
       document.getElementById('no-video-placeholder')?.classList.add('hidden');
 
+      // Asynchronously upload video to server for permanent storage
+      uploadVideoFileToServer(file);
+
       // Update Transcript button status
       const btnTranscribe = document.getElementById('btn-transcribe');
       if (btnTranscribe) {
@@ -66,9 +428,10 @@ export function initVideoPlayer() {
       }
 
       mainVideo.onloadedmetadata = () => {
-        state.duration = mainVideo.duration || 30.0;
+        state.duration = mainVideo.duration || 0.0;
         document.getElementById('timecode-total').textContent = formatTimecodeDisplay(state.duration);
         document.getElementById('video-resolution').textContent = `${mainVideo.videoWidth}x${mainVideo.videoHeight}`;
+        updateCancelVideoBtnVisibility();
         logToTerminal('CLIENT:STATE', `Video loaded: "${file.name}"`, {
           duration: `${state.duration.toFixed(1)}s (${formatTimecodeDisplay(state.duration)})`,
           resolution: `${mainVideo.videoWidth}x${mainVideo.videoHeight}`
@@ -91,6 +454,7 @@ export function initVideoPlayer() {
       if (timeCurrent) timeCurrent.textContent = formatTimecodeDisplay(state.currentTime);
 
       updateActiveSubtitleDisplay();
+      syncDubVoicePlayback(state.currentTime);
       state.emit('timeUpdated', state.currentTime);
     });
 
@@ -98,18 +462,21 @@ export function initVideoPlayer() {
     mainVideo.addEventListener('play', () => {
       state.isPlaying = true;
       updatePlayButtonUI(true);
+      syncDubVoicePlayback(state.currentTime);
     });
 
     // Sync pause state icon when native video pauses
     mainVideo.addEventListener('pause', () => {
       state.isPlaying = false;
       updatePlayButtonUI(false);
+      pauseDubVoicePlayback();
     });
 
     // When video ends
     mainVideo.addEventListener('ended', () => {
       state.isPlaying = false;
       updatePlayButtonUI(false);
+      stopDubVoicePlayback();
       window.showToast?.('វីដេអូបានចាក់ចប់ Ended');
     });
   }
@@ -128,6 +495,9 @@ export function initVideoPlayer() {
   state.on('activeSubtitleUpdate', () => {
     updateActiveSubtitleDisplay();
   });
+
+  // Initialize Video Volume Control & restore saved volume level
+  initVideoVolumeControls();
 }
 
 function updatePlayButtonUI(isPlaying) {
@@ -153,6 +523,7 @@ export function seekTo(seconds) {
   }
 
   updateActiveSubtitleDisplay();
+  syncDubVoicePlayback(state.currentTime);
   state.emit('timeUpdated', state.currentTime);
   drawCanvasPreview();
 }
@@ -169,6 +540,7 @@ export function togglePlay() {
       mainVideo.play().then(() => {
         state.isPlaying = true;
         updatePlayButtonUI(true);
+        syncDubVoicePlayback(state.currentTime);
         window.showToast?.('កំពុងចាក់ Playback');
       }).catch((err) => {
         console.warn('Autoplay restriction or play error:', err);
@@ -177,6 +549,7 @@ export function togglePlay() {
         mainVideo.play().then(() => {
           state.isPlaying = true;
           updatePlayButtonUI(true);
+          syncDubVoicePlayback(state.currentTime);
           window.showToast?.('កំពុងចាក់ Playback (Muted)');
         }).catch((e) => {
           window.showToast?.('មិនអាចចាក់វីដេអូបានទេ៖ ' + e.message);
@@ -186,6 +559,7 @@ export function togglePlay() {
       mainVideo.pause();
       state.isPlaying = false;
       updatePlayButtonUI(false);
+      pauseDubVoicePlayback();
       window.showToast?.('ផ្អាកការចាក់ Paused');
     }
     return;
@@ -198,9 +572,11 @@ export function togglePlay() {
   if (state.isPlaying) {
     lastTimestamp = null;
     animationFrameId = requestAnimationFrame(mockPlaybackLoop);
+    syncDubVoicePlayback(state.currentTime);
     window.showToast?.('កំពុងចាក់ Demo Playback');
   } else {
     if (animationFrameId) cancelAnimationFrame(animationFrameId);
+    pauseDubVoicePlayback();
     window.showToast?.('ផ្អាកការចាក់ Paused');
   }
 }
@@ -216,6 +592,7 @@ export function stopPlayback() {
     mainVideo.pause();
     mainVideo.currentTime = 0;
   }
+  stopDubVoicePlayback();
   seekTo(0);
   window.showToast?.('បានបញ្ឈប់ការចាក់ Stopped');
 }
@@ -239,6 +616,7 @@ function mockPlaybackLoop(timestamp) {
   if (timeCurrent) timeCurrent.textContent = formatTimecodeDisplay(state.currentTime);
 
   updateActiveSubtitleDisplay();
+  syncDubVoicePlayback(state.currentTime);
   state.emit('timeUpdated', state.currentTime);
   drawCanvasPreview();
 
@@ -323,47 +701,7 @@ export function drawCanvasPreview() {
   }
 }
 
-// Tool functions
-export function flipVideo() {
-  isFlipped = !isFlipped;
-  const mainVideo = document.getElementById('main-video');
-  const previewCanvas = document.getElementById('preview-canvas');
-  const transform = isFlipped ? 'scaleX(-1)' : 'scaleX(1)';
-  if (mainVideo) mainVideo.style.transform = transform;
-  if (previewCanvas) previewCanvas.style.transform = transform;
-  window.showToast?.(isFlipped ? 'បាន Flip ផ្ដេក' : 'វីដេអូសភាពដើម');
-}
-
-export function rotateVideo() {
-  currentRotation = (currentRotation + 90) % 360;
-  const mainVideo = document.getElementById('main-video');
-  if (mainVideo) mainVideo.style.transform = `rotate(${currentRotation}deg)`;
-  window.showToast?.(`បានបង្វិលទៅ ${currentRotation}°`);
-}
-
-export function toggleVideoAspect() {
-  const viewport = document.getElementById('player-viewport');
-  if (!viewport) return;
-  viewport.classList.toggle('max-w-[280px]');
-  window.showToast?.('បានផ្លាស់ប្តូរ Aspect Ratio 16:9 / 9:16');
-}
-
-export function toggleSubOverlay() {
-  const overlay = document.getElementById('sub-overlay-container');
-  if (overlay) {
-    overlay.classList.toggle('hidden');
-    window.showToast?.('បានប្តូរការបង្ហាញ Subtitle Overlay');
-  }
-}
-
-export function cycleSubColor() {
-  subColorIndex = (subColorIndex + 1) % subColorStyles.length;
-  const subText = document.getElementById('sub-overlay-text');
-  if (subText) {
-    subText.className = `px-3.5 py-1.5 ${subColorStyles[subColorIndex]} backdrop-blur-md rounded-lg font-khmer text-sm md:text-base tracking-wide border shadow-2xl text-center max-w-[90%] transition-all`;
-    window.showToast?.('បានផ្លាស់ប្តូរស្ទាយ Subtitle');
-  }
-}
+// Audio controls
 
 export function toggleMuteAudio() {
   state.isMuted = !state.isMuted;
@@ -398,3 +736,234 @@ export function toggleIsolateBGM() {
     window.showToast?.('បានលុបការ Isolate BGM');
   }
 }
+
+// ============================================================================
+// VIDEO PREVIEW VOLUME CONTROLLER ("សារេសម្លេង Video")
+// ============================================================================
+
+export function initVideoVolumeControls() {
+  const savedVolumeFraction = state.videoVolume !== undefined ? state.videoVolume : 1.0;
+  const savedPercent = Math.round(savedVolumeFraction * 100);
+  setVideoVolume(savedPercent);
+}
+
+export function setVideoVolume(val) {
+  const percent = Math.max(0, Math.min(100, parseInt(val, 10) || 0));
+  const fraction = percent / 100;
+  state.videoVolume = fraction;
+
+  try {
+    localStorage.setItem('video_preview_volume', fraction.toString());
+  } catch (_) {}
+
+  const mainVideo = document.getElementById('main-video');
+  if (mainVideo) {
+    mainVideo.volume = fraction;
+    mainVideo.muted = fraction === 0;
+  }
+
+  updateVideoVolumeUI(percent);
+}
+
+export function toggleVideoVolumeMute() {
+  const mainVideo = document.getElementById('main-video');
+  const isCurrentlyMuted = state.videoVolume === 0 || (mainVideo && mainVideo.muted);
+
+  if (!isCurrentlyMuted) {
+    state._lastVideoVolume = state.videoVolume > 0 ? state.videoVolume : 1.0;
+    setVideoVolume(0);
+    window.showToast?.('🔇 បានបិទសំឡេងវីដេអូ (Muted)');
+  } else {
+    const restorePercent = Math.round((state._lastVideoVolume || 1.0) * 100);
+    setVideoVolume(restorePercent > 0 ? restorePercent : 100);
+    window.showToast?.('🔊 បានបើកសំឡេងវីដេអូ (Unmuted)');
+  }
+}
+
+export function updateVideoVolumeUI(percent) {
+  const slider = document.getElementById('video-volume-slider');
+  const text = document.getElementById('video-volume-text');
+  const icon = document.getElementById('video-volume-icon');
+
+  if (slider && parseInt(slider.value, 10) !== percent) {
+    slider.value = percent;
+  }
+  if (text) {
+    text.textContent = `${percent}%`;
+  }
+  if (icon) {
+    if (percent === 0) {
+      icon.setAttribute('data-lucide', 'volume-x');
+      icon.classList.add('text-rose-400');
+      icon.classList.remove('text-slate-300', 'text-indigo-400');
+    } else if (percent <= 50) {
+      icon.setAttribute('data-lucide', 'volume-1');
+      icon.classList.remove('text-rose-400');
+      icon.classList.add('text-slate-300');
+    } else {
+      icon.setAttribute('data-lucide', 'volume-2');
+      icon.classList.remove('text-rose-400');
+      icon.classList.add('text-slate-300');
+    }
+    if (window.lucide) window.lucide.createIcons();
+  }
+}
+
+// Expose on window for direct HTML inline attributes
+window.setVideoVolume = setVideoVolume;
+window.toggleVideoVolumeMute = toggleVideoVolumeMute;
+
+// ============================================================================
+// REAL-TIME AUDIO-VIDEO DUB VOICE SYNC ENGINE
+// ============================================================================
+
+let activeDubAudio = null;
+let activeDubSubId = null;
+
+export function stopDubVoicePlayback() {
+  if (activeDubAudio) {
+    try {
+      activeDubAudio.pause();
+      activeDubAudio.currentTime = 0;
+    } catch (_) {}
+    activeDubAudio = null;
+    activeDubSubId = null;
+  }
+  // Restore video volume if ducked
+  restoreVideoAudioDucking();
+}
+
+export function pauseDubVoicePlayback() {
+  if (activeDubAudio && !activeDubAudio.paused) {
+    try {
+      activeDubAudio.pause();
+    } catch (_) {}
+  }
+}
+
+function applyVideoAudioDucking() {
+  // In 'after' mode, the video has already been rendered with background ducking
+  if (state.previewMode === 'after') return;
+  const mainVideo = document.getElementById('main-video');
+  if (mainVideo && !mainVideo.muted && state.videoVolume > 0) {
+    if (state.dubbingSettings?.removeSpokenVoice) {
+      // Mute Voice ON: completely mute original voice (100% silence) during speech
+      mainVideo.volume = 0;
+    } else {
+      mainVideo.volume = state.videoVolume;
+    }
+  }
+}
+
+function restoreVideoAudioDucking() {
+  const mainVideo = document.getElementById('main-video');
+  if (mainVideo && !mainVideo.muted) {
+    if (state.dubbingSettings?.removeSpokenVoice) {
+      // Outside speech: restore to user-configured BGM Volume (e.g. 15% -> 0.15)
+      const bgVol = typeof state.dubbingSettings.bgVolume === 'number' ? state.dubbingSettings.bgVolume : 8;
+      const duckRatio = Math.max(0, Math.min(100, bgVol)) / 100;
+      mainVideo.volume = state.videoVolume * duckRatio;
+    } else {
+      mainVideo.volume = state.videoVolume;
+    }
+  }
+}
+
+export function syncDubVoicePlayback(currentTime) {
+  // In 'after' mode, the dubbed video already contains the mixed voice audio track.
+  // Never play overlay voice clips in 'after' mode to prevent double/echo sound profile voice.
+  if (state.previewMode === 'after') {
+    if (activeDubAudio) {
+      stopDubVoicePlayback();
+    }
+    return;
+  }
+
+  if (!state.isPlaying) {
+    pauseDubVoicePlayback();
+    return;
+  }
+
+  // Buffer Padding (0.25s before and after speech to eliminate breathing and reverb)
+  const PAD_BEFORE = 0.25;
+  const PAD_AFTER = 0.25;
+
+  // Find active subtitle with generated audio covering currentTime
+  const currentSub = state.subtitles.find(s => {
+    return (s.audioUrl || s.status === 'Ready') &&
+           currentTime >= (s.startSec - PAD_BEFORE) &&
+           currentTime < (s.endSec + PAD_AFTER);
+  });
+
+  if (!currentSub) {
+    // Outside any dubbed subtitle range -> pause/clear active dub audio & restore video volume
+    if (activeDubAudio) {
+      pauseDubVoicePlayback();
+      activeDubAudio = null;
+      activeDubSubId = null;
+    }
+    restoreVideoAudioDucking();
+    return;
+  }
+
+  // Still within subtitle speech window: ensure original voice stays ducked/muted
+  applyVideoAudioDucking();
+
+  const audioUrl = currentSub.audioUrl || `/storage/voices/voice_${String(currentSub.id).replace(/[:/\\\s]/g, '_')}.mp3`;
+  const timeOffset = Math.max(0, currentTime - currentSub.startSec);
+
+  // If this subtitle audio is already active
+  if (activeDubSubId === currentSub.id && activeDubAudio) {
+    applyVideoAudioDucking();
+    if (activeDubAudio.paused) {
+      activeDubAudio.play().catch(() => {});
+    }
+    // Drift compensation: if audio drifted more than 0.25s from video, resync it
+    if (Math.abs(activeDubAudio.currentTime - timeOffset) > 0.25) {
+      try {
+        activeDubAudio.currentTime = timeOffset;
+      } catch (_) {}
+    }
+    return;
+  }
+
+  // Switch to new subtitle or start playing fresh
+  stopDubVoicePlayback();
+
+  try {
+    const audio = new Audio(audioUrl);
+    // Audio file on disk is already tempo-adjusted by FFmpeg
+    audio.playbackRate = 1.0;
+    audio.volume = state.dubVolume !== undefined ? state.dubVolume : 1.0;
+
+    if (timeOffset > 0.05) {
+      audio.currentTime = timeOffset;
+    }
+
+    activeDubAudio = audio;
+    activeDubSubId = currentSub.id;
+    applyVideoAudioDucking();
+
+    audio.play().catch(err => {
+      console.warn('Dub voice audio play blocked or pending:', err.message);
+    });
+
+    audio.onended = () => {
+      if (activeDubSubId === currentSub.id) {
+        activeDubAudio = null;
+        activeDubSubId = null;
+        // Keep video ducked/muted until currentTime exits [startSec - PAD_BEFORE -> endSec + PAD_AFTER]
+        // This prevents hearing any trailing original speech if AI finished slightly earlier.
+      }
+    };
+  } catch (err) {
+    console.error('Failed to initialize dub audio:', err);
+  }
+}
+
+// Expose on window for global coordination
+window.syncDubVoicePlayback = syncDubVoicePlayback;
+window.stopDubVoicePlayback = stopDubVoicePlayback;
+window.pauseDubVoicePlayback = pauseDubVoicePlayback;
+window.applyVideoAudioDucking = applyVideoAudioDucking;
+window.restoreVideoAudioDucking = restoreVideoAudioDucking;

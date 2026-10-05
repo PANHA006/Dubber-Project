@@ -43,91 +43,120 @@
       </div>
     </div>
 
-    <!-- Project Tabs -->
-    <div class="flex items-center gap-1.5 overflow-x-auto py-1 max-w-xl scrollbar-none" id="tabs-container">
-      <button
-        class="project-tab active flex items-center gap-2 px-3 py-1.5 text-xs font-medium rounded-lg bg-indigo-600/30 text-indigo-200 border border-indigo-500/40 shadow-sm transition-all hover:bg-indigo-600/40">
-        <i data-lucide="video" class="w-3.5 h-3.5 text-indigo-400"></i>
-        <span>video_01.mp4</span>
-      </button>
-      <button
-        class="project-tab flex items-center gap-2 px-3 py-1.5 text-xs font-medium rounded-lg bg-slate-800/60 text-slate-400 border border-slate-700/50 hover:bg-slate-800 hover:text-slate-200 transition-all">
-        <i data-lucide="video" class="w-3.5 h-3.5 opacity-60"></i>
-        <span>video_02.mp4</span>
-      </button>
-      <button
-        class="project-tab flex items-center gap-2 px-3 py-1.5 text-xs font-medium rounded-lg bg-slate-800/60 text-slate-400 border border-slate-700/50 hover:bg-slate-800 hover:text-slate-200 transition-all">
-        <i data-lucide="video" class="w-3.5 h-3.5 opacity-60"></i>
-        <span>tutorial_03.mp4</span>
-      </button>
-      <button id="add-tab-btn" onclick="showToast('បានបង្កើត Sequence ថ្មី')"
-        class="flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium rounded-lg bg-slate-800/40 text-slate-400 hover:text-slate-200 hover:bg-slate-800 border border-dashed border-slate-700 transition-all">
-        <i data-lucide="plus" class="w-3.5 h-3.5"></i>
-        <span>Add</span>
-      </button>
-    </div>
-
     <!-- Quick Utilities / Toolbar -->
     <div class="flex items-center gap-2">
+      <!-- Cloud Auto-Save Status Badge -->
+      <div id="autosave-badge"
+        class="h-8 inline-flex items-center gap-1.5 text-[11px] font-medium px-2.5 rounded-lg bg-slate-800/80 border border-slate-700/80 text-slate-400 select-none"
+        title="ស្ថានភាព Auto-Save ទៅកាន់ storage/projects/autosave_project.json">
+        <i id="autosave-icon" data-lucide="cloud-check" class="w-3.5 h-3.5 text-emerald-400"></i>
+        <span id="autosave-text" class="font-mono text-[10.5px]">Auto-Saved</span>
+      </div>
+
       <!-- Backend Health Status Badge -->
       <div id="server-badge"
-        class="flex items-center gap-1.5 text-[11px] font-medium px-2.5 py-1 rounded-full bg-slate-800/80 border border-slate-700 text-slate-400">
+        class="h-8 inline-flex items-center gap-1.5 text-[11px] font-medium px-2.5 rounded-lg bg-slate-800/80 border border-slate-700 text-slate-400 select-none">
         <span class="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse"></span>
         <span>Connecting...</span>
       </div>
 
-      <!-- File folder menu -->
-      <div class="relative">
-        <button id="folder-menu-btn"
-          class="flex items-center gap-1 px-2.5 py-1.5 bg-slate-800/80 hover:bg-slate-700 text-slate-300 rounded-lg border border-slate-700/80 text-xs transition">
-          <i data-lucide="folder" class="w-3.5 h-3.5 text-amber-400"></i>
-          <i data-lucide="chevron-down" class="w-3 h-3 text-slate-400"></i>
+      <!-- Export Video CTA Button -->
+      <button id="btn-export-video" onclick="openExportModal()" title="Export Dubbed Video (នាំចេញវីដេអូ)"
+        class="h-8 px-3 inline-flex items-center gap-1.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white rounded-lg border border-emerald-500/40 text-xs font-semibold shadow-sm transition active:scale-95 cursor-pointer">
+        <i data-lucide="download" class="w-3.5 h-3.5 text-emerald-200"></i>
+        <span>Export Video</span>
+      </button>
+
+      <!-- Voice Library Button (RVC Voice Cloning) -->
+      <button id="btn-voice-library" onclick="openVoiceLibraryModal()" title="Voice Library (គ្រប់គ្រង និងចម្លងសំឡេងតួអង្គ RVC)"
+        class="h-8 px-3 inline-flex items-center gap-1.5 bg-gradient-to-r from-purple-900/60 to-indigo-900/60 hover:from-purple-800/80 hover:to-indigo-800/80 text-purple-200 hover:text-white rounded-lg border border-purple-500/40 text-xs font-medium shadow-sm transition active:scale-95 cursor-pointer">
+        <i data-lucide="mic-2" class="w-3.5 h-3.5 text-purple-400"></i>
+        <span>Voice Library</span>
+        <span id="voice-library-count" class="ml-0.5 px-1.5 py-0.2 bg-purple-600/80 text-white rounded-full text-[10px] font-semibold">0</span>
+      </button>
+
+      <!-- STT Model Selector Dropdown -->
+      <div class="relative" id="stt-model-selector-wrapper">
+        <button id="btn-stt-model-selector" onclick="window.toggleSttModelDropdown(event)" title="ជ្រើសរើស AI Model សម្រាប់ Transcribe"
+          class="h-8 px-2.5 inline-flex items-center gap-1.5 bg-slate-800/90 hover:bg-slate-700/90 text-slate-200 rounded-lg border border-slate-700/80 text-xs font-medium shadow-sm transition active:scale-95 cursor-pointer">
+          <span id="stt-model-icon" class="text-emerald-400">⚡</span>
+          <span id="stt-model-label" class="font-medium text-[11px] truncate max-w-[130px]">Groq Large-v3</span>
+          <i data-lucide="chevron-down" class="w-3 h-3 text-slate-400 ml-0.5"></i>
         </button>
+
         <!-- Dropdown Menu -->
-        <div id="folder-dropdown"
-          class="hidden absolute right-0 mt-1 w-48 bg-[#111728] border border-slate-700 rounded-lg shadow-xl py-1 text-xs z-50">
-          <button onclick="triggerVideoUpload()"
-            class="w-full text-left px-3 py-1.5 hover:bg-indigo-600/20 hover:text-indigo-300 flex items-center gap-2">
-            <i data-lucide="upload" class="w-3.5 h-3.5 text-indigo-400"></i> Import Video (.mp4)
+        <div id="stt-model-dropdown" class="hidden absolute right-0 mt-1.5 w-64 bg-[#0f1424] border border-slate-700/90 rounded-xl shadow-2xl z-50 py-1.5 text-xs text-slate-300">
+          <div class="px-3 py-1 text-[10px] font-semibold text-slate-400 uppercase tracking-wider border-b border-slate-800/80 flex items-center justify-between">
+            <span>💻 Offline (Faster-Whisper $0)</span>
+            <span class="text-[9px] text-slate-500">Local CPU</span>
+          </div>
+          <button onclick="window.selectSttModel('small')" class="w-full text-left px-3 py-1.5 hover:bg-slate-800/80 flex items-center justify-between transition cursor-pointer stt-option" data-model="small">
+            <span>Small / Balanced (Fast CPU)</span>
+            <span class="stt-check hidden text-emerald-400 font-bold">✓</span>
           </button>
-          <button onclick="triggerSRTUpload()"
-            class="w-full text-left px-3 py-1.5 hover:bg-indigo-600/20 hover:text-indigo-300 flex items-center gap-2">
-            <i data-lucide="file-up" class="w-3.5 h-3.5 text-amber-400"></i> Import Subtitles (.srt)
+          <button onclick="window.selectSttModel('medium')" class="w-full text-left px-3 py-1.5 hover:bg-slate-800/80 flex items-center justify-between transition cursor-pointer stt-option" data-model="medium">
+            <span>Medium / Higher Accuracy</span>
+            <span class="stt-check hidden text-emerald-400 font-bold">✓</span>
           </button>
-          <button onclick="exportSRTFile()"
-            class="w-full text-left px-3 py-1.5 hover:bg-indigo-600/20 hover:text-indigo-300 flex items-center gap-2">
-            <i data-lucide="download" class="w-3.5 h-3.5 text-emerald-400"></i> Export Subtitles (.srt)
+          <button onclick="window.selectSttModel('large-v2')" class="w-full text-left px-3 py-1.5 hover:bg-slate-800/80 flex items-center justify-between transition cursor-pointer stt-option" data-model="large-v2">
+            <span>Large-v2 / Whisper large-v2</span>
+            <span class="stt-check hidden text-emerald-400 font-bold">✓</span>
           </button>
-          <button onclick="showToast('បានរក្សាទុក Workspace ជោគជ័យ!')"
-            class="w-full text-left px-3 py-1.5 hover:bg-indigo-600/20 hover:text-indigo-300 flex items-center gap-2 border-t border-slate-800">
-            <i data-lucide="save" class="w-3.5 h-3.5"></i> Save Workspace
+          <button onclick="window.selectSttModel('large-v3')" class="w-full text-left px-3 py-1.5 hover:bg-slate-800/80 flex items-center justify-between transition cursor-pointer stt-option" data-model="large-v3">
+            <span>Large-v3 / Best Accuracy</span>
+            <span class="stt-check hidden text-emerald-400 font-bold">✓</span>
           </button>
+
+          <div class="px-3 py-1 mt-1 text-[10px] font-semibold text-emerald-400 uppercase tracking-wider border-t border-b border-slate-800/80 flex items-center justify-between bg-emerald-950/20">
+            <span>⚡ Cloud API (Ultra-Fast 2s)</span>
+            <span class="text-[9px] text-emerald-500 font-mono">Fastest</span>
+          </div>
+          <button onclick="window.selectSttModel('groq-whisper-large-v3')" class="w-full text-left px-3 py-1.5 hover:bg-slate-800/80 flex items-center justify-between transition cursor-pointer stt-option" data-model="groq-whisper-large-v3">
+            <span class="font-medium text-emerald-300">Groq Whisper Large-v3 / API ⭐</span>
+            <span class="stt-check hidden text-emerald-400 font-bold">✓</span>
+          </button>
+          <button onclick="window.selectSttModel('groq-whisper-turbo')" class="w-full text-left px-3 py-1.5 hover:bg-slate-800/80 flex items-center justify-between transition cursor-pointer stt-option" data-model="groq-whisper-turbo">
+            <span>Groq Whisper Turbo / API (Fastest)</span>
+            <span class="stt-check hidden text-emerald-400 font-bold">✓</span>
+          </button>
+          <button onclick="window.selectSttModel('gemini-stt')" class="w-full text-left px-3 py-1.5 hover:bg-slate-800/80 flex items-center justify-between transition cursor-pointer stt-option" data-model="gemini-stt">
+            <span>Gemini STT / API</span>
+            <span class="stt-check hidden text-emerald-400 font-bold">✓</span>
+          </button>
+
+          <div class="px-3 py-1 mt-1 text-[10px] font-semibold text-indigo-400 uppercase tracking-wider border-t border-b border-slate-800/80 flex items-center justify-between bg-indigo-950/20">
+            <span>🌐 Commercial Specialist API</span>
+            <span class="text-[9px] text-indigo-400 font-mono">Deepgram</span>
+          </div>
+          <button onclick="window.selectSttModel('deepgram-nova-3')" class="w-full text-left px-3 py-1.5 hover:bg-slate-800/80 flex items-center justify-between transition cursor-pointer stt-option" data-model="deepgram-nova-3">
+            <span>Deepgram Nova-3 / API (Latest)</span>
+            <span class="stt-check hidden text-emerald-400 font-bold">✓</span>
+          </button>
+          <button onclick="window.selectSttModel('deepgram-nova-2')" class="w-full text-left px-3 py-1.5 hover:bg-slate-800/80 flex items-center justify-between transition cursor-pointer stt-option" data-model="deepgram-nova-2">
+            <span>Deepgram Nova-2 / API</span>
+            <span class="stt-check hidden text-emerald-400 font-bold">✓</span>
+          </button>
+
+          <div class="p-1.5 mt-1 border-t border-slate-800/80 bg-slate-900/40">
+            <button onclick="openSettingsModal(); window.closeSttModelDropdown();" class="w-full py-1 px-2 rounded-md bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white flex items-center justify-center gap-1.5 text-[11px] font-medium transition cursor-pointer">
+              <i data-lucide="key" class="w-3 h-3 text-indigo-400"></i>
+              <span>កំណត់ API Keys (Groq / Gemini)</span>
+            </button>
+          </div>
         </div>
       </div>
 
-      <!-- Undo / Redo -->
-      <div class="flex items-center bg-slate-800/80 rounded-lg border border-slate-700/80 p-0.5">
-        <button onclick="showToast('មិនទាន់មានសកម្មភាព Undo ទេ')" title="Undo"
-          class="p-1.5 text-slate-400 hover:text-white rounded hover:bg-slate-700 transition">
-          <i data-lucide="undo-2" class="w-3.5 h-3.5"></i>
-        </button>
-        <button onclick="showToast('មិនទាន់មានសកម្មភាព Redo ទេ')" title="Redo"
-          class="p-1.5 text-slate-400 hover:text-white rounded hover:bg-slate-700 transition">
-          <i data-lucide="redo-2" class="w-3.5 h-3.5"></i>
-        </button>
-      </div>
-
-      <!-- Language Switcher Pill -->
-      <div class="flex items-center bg-[#151c2e] p-0.5 rounded-lg border border-slate-700/80 text-xs">
-        <button id="lang-km" onclick="setLanguage('km')"
-          class="px-2 py-0.5 rounded-md text-[11px] font-medium bg-indigo-600 text-white shadow-sm transition">ខ្មែរ</button>
-        <button id="lang-en" onclick="setLanguage('en')"
-          class="px-2 py-0.5 rounded-md text-[11px] font-medium text-slate-400 hover:text-white transition">EN</button>
-      </div>
+      <!-- Data History Button -->
+      <button id="btn-data-history" onclick="openHistoryModal()" title="Data History (ប្រវត្តិវីដេអូដែលបាន Render/Export)"
+        class="h-8 px-3 inline-flex items-center gap-1.5 bg-slate-800/80 hover:bg-slate-700 text-slate-200 rounded-lg border border-slate-700/80 text-xs font-medium shadow-sm transition active:scale-95 cursor-pointer">
+        <i data-lucide="history" class="w-3.5 h-3.5 text-indigo-400"></i>
+        <span>Data History</span>
+        <span id="history-badge-count" class="hidden ml-0.5 px-1.5 py-0.2 bg-indigo-600/80 text-white rounded-full text-[10px] font-semibold">0</span>
+      </button>
 
       <!-- Settings Gear -->
       <button onclick="openSettingsModal()"
-        class="p-2 text-slate-300 bg-slate-800/80 hover:bg-slate-700 rounded-lg border border-slate-700/80 transition"
+        class="h-8 w-8 inline-flex items-center justify-center text-slate-300 bg-slate-800/80 hover:bg-slate-700 rounded-lg border border-slate-700/80 transition cursor-pointer"
         title="Workspace Settings">
         <i data-lucide="settings" class="w-3.5 h-3.5"></i>
       </button>
@@ -136,44 +165,50 @@
 
   <!-- Hidden file inputs -->
   <input type="file" id="video-file-input" accept="video/mp4,video/webm,video/ogg" class="hidden" />
-  <input type="file" id="srt-file-input" accept=".srt" class="hidden" />
+  <input type="file" id="json-file-input" accept=".json,application/json,.srt" class="hidden" />
+  <input type="file" id="srt-file-input" accept=".srt,.json" class="hidden" />
 
-  <!-- Main Workspace Layout (2-Row Studio Layout) -->
-  <main class="flex-1 flex flex-col overflow-hidden p-2.5 gap-2.5">
+  <!-- Main Workspace Layout (2-Column Studio Layout: Left Column & Right Column) -->
+  <main class="flex-1 flex overflow-hidden p-2.5 gap-2.5">
 
-    <!-- TOP ROW: Video Preview (Wider) & Subtitle Data - Exactly Equal Height -->
-    <div class="flex-1 flex overflow-hidden gap-2.5 min-h-0">
+    <!-- ==================== LEFT COLUMN: Video Preview & Dubbing Settings ==================== -->
+    <div class="w-[440px] lg:w-[500px] xl:w-[540px] flex flex-col gap-2.5 shrink-0 h-full overflow-hidden">
 
-      <!-- Video Preview Card: Wider width (w-[440px] lg:w-[500px] xl:w-[540px]) & h-full -->
+      <!-- Video Preview Card: Flex-1 takes top space -->
       <div
-        class="w-[440px] lg:w-[500px] xl:w-[540px] bg-[#0f1422] border border-slate-800/90 rounded-xl p-3 flex flex-col shadow-lg shrink-0 h-full overflow-hidden">
+        class="flex-1 bg-[#0f1422] border border-slate-800/90 rounded-xl p-3 flex flex-col shadow-lg shrink-0 overflow-hidden min-h-0">
         <!-- Title & Sub-actions -->
         <div class="flex items-center justify-between mb-2">
           <div class="flex items-center gap-2 text-slate-200 font-semibold text-xs tracking-wide">
             <i data-lucide="monitor-play" class="w-4 h-4 text-indigo-400"></i>
             <span>Video Preview</span>
           </div>
-          <span id="video-resolution"
-            class="text-[10px] text-slate-400 bg-slate-800/80 px-1.5 py-0.5 rounded border border-slate-700/60">1080p
-            HD</span>
-        </div>
 
-        <!-- Video Secondary Tool Icons Bar -->
-        <div
-          class="flex items-center justify-between bg-[#141b2e] px-2 py-1.5 rounded-lg border border-slate-800 text-slate-400 text-xs mb-2.5">
-          <button onclick="toggleVideoAspect()" title="Aspect Ratio" class="p-1 hover:text-white transition"><i
-              data-lucide="ratio" class="w-3.5 h-3.5"></i></button>
-          <button onclick="flipVideo()" title="Mirror Flip" class="p-1 hover:text-white transition"><i
-              data-lucide="arrow-left-right" class="w-3.5 h-3.5"></i></button>
-          <button onclick="rotateVideo()" title="Rotate 90°" class="p-1 hover:text-white transition"><i
-              data-lucide="rotate-cw" class="w-3.5 h-3.5"></i></button>
-          <button onclick="toggleSubOverlay()" title="Subtitle Display"
-            class="p-1 text-indigo-400 hover:text-indigo-300 transition"><i data-lucide="subtitles"
-              class="w-3.5 h-3.5"></i></button>
-          <button onclick="cycleSubColor()" title="Color Style" class="p-1 hover:text-white transition"><i
-              data-lucide="palette" class="w-3.5 h-3.5"></i></button>
-          <span class="w-2 h-2 rounded-full bg-emerald-400 ring-4 ring-emerald-400/20"
-            title="Audio Engine Ready"></span>
+          <!-- Before / After Toggle Switcher (កុងតាក់ Before & After) -->
+          <div class="flex items-center bg-[#131a2c] p-0.5 rounded-lg border border-slate-700/80 shadow-inner">
+            <button id="btn-preview-before" onclick="switchPreviewMode('before')"
+              class="px-2.5 py-0.5 rounded-md text-[11px] font-medium transition bg-indigo-600 text-white shadow-xs cursor-pointer active:scale-95"
+              title="មើល និងស្តាប់វីដេអូដើម (Original Video)">
+              🎬 Before
+            </button>
+            <button id="btn-preview-after" onclick="switchPreviewMode('after')"
+              class="px-2.5 py-0.5 rounded-md text-[11px] font-medium transition text-slate-400 hover:text-slate-200 hover:bg-slate-800/60 cursor-pointer active:scale-95"
+              title="មើល និងស្តាប់វីដេអូដែល Dubbed រួច (Dubbed Video)">
+              ✨ After (Dubbed)
+            </button>
+          </div>
+
+          <div class="flex items-center gap-1.5">
+            <span id="video-resolution"
+              class="text-[10px] text-slate-400 bg-slate-800/80 px-1.5 py-0.5 rounded border border-slate-700/60">1080p
+              HD</span>
+            <button id="btn-cancel-video" onclick="cancelCurrentVideo()"
+              title="លុប/បោះបង់វីដេអូនេះ ដើម្បីប្តូរទៅធ្វើវីដេអូថ្មី (Cancel & Remove Video)"
+              class="hidden items-center justify-center w-6 h-6 rounded-md bg-rose-500/15 hover:bg-rose-500/30 text-rose-400 hover:text-rose-300 border border-rose-500/30 transition cursor-pointer active:scale-95 shadow-xs"
+              aria-label="Cancel Video">
+              <i data-lucide="x" class="w-3.5 h-3.5"></i>
+            </button>
+          </div>
         </div>
 
         <!-- Player Screen Container -->
@@ -186,15 +221,16 @@
           <!-- Mock/Canvas Animated Visualizer when no video loaded -->
           <canvas id="preview-canvas" class="w-full h-full object-contain"></canvas>
 
-          <!-- Fallback Placeholders -->
+          <!-- Fallback Placeholders (Click to Import Video) -->
           <div id="no-video-placeholder"
-            class="absolute inset-0 flex flex-col items-center justify-center text-slate-500 pointer-events-none p-4 text-center">
+            class="absolute inset-0 flex flex-col items-center justify-center text-slate-500 cursor-pointer p-4 text-center hover:bg-slate-900/40 transition group/placeholder z-10"
+            title="ចុចដើម្បីជ្រើសរើសវីដេអូ (Click to import video)">
             <div
-              class="w-14 h-14 rounded-2xl bg-slate-800/50 border border-slate-700/60 flex items-center justify-center mb-2 text-slate-400 group-hover:scale-105 transition">
-              <i data-lucide="tv" class="w-7 h-7 stroke-[1.5]"></i>
+              class="w-16 h-16 rounded-2xl bg-slate-800/60 border border-slate-700/80 flex items-center justify-center mb-2.5 text-indigo-400 group-hover/placeholder:scale-110 group-hover/placeholder:border-indigo-500/60 group-hover/placeholder:shadow-lg group-hover/placeholder:shadow-indigo-500/20 group-hover/placeholder:text-indigo-300 transition-all duration-300">
+              <i data-lucide="tv" class="w-8 h-8 stroke-[1.75]"></i>
             </div>
-            <p class="text-xs font-medium text-slate-400">មិនទាន់មានវីដេអូ</p>
-            <p class="text-[11px] text-slate-500 mt-0.5">ចុច 'Load Video' ខាងក្រោម ឬបញ្ចូល MP4</p>
+            <p class="text-xs font-semibold text-slate-200 group-hover/placeholder:text-white transition">មិនទាន់មានវីដេអូ (ចុចដើម្បី Import)</p>
+            <p class="text-[11px] text-slate-400 mt-1">គាំទ្រ MP4, WebM, MKV ឬចុច 'Load Video' ខាងក្រោម</p>
           </div>
 
           <!-- Dynamic Subtitle Overlay on Video Screen -->
@@ -207,30 +243,169 @@
           </div>
         </div>
 
-        <!-- Video Time & Playback Controls Bar -->
+        <!-- Video Time & Playback Controls Bar with Interactive Mini Timeline -->
         <div
-          class="mt-2.5 bg-[#141b2e] rounded-xl border border-slate-800 p-2 flex items-center justify-between gap-2 shrink-0">
-          <span id="timecode-current"
-            class="text-xs font-mono font-medium text-slate-300 tracking-wider">00:00.00</span>
+          class="mt-2.5 bg-[#141b2e] rounded-xl border border-slate-800 p-2.5 flex flex-col gap-2 shrink-0">
+          
+          <!-- Mini Interactive Timeline Scrubber (Fixed height, Neon Glow & Time Tooltip) -->
+          <div id="video-preview-timeline-wrapper" class="relative w-full py-1.5 cursor-pointer group select-none" title="ចុចដើម្បី Seek វិនាទីវីដេអូ">
+            <!-- Floating Hover Time Tooltip -->
+            <div id="video-preview-tooltip" class="absolute -top-6 -translate-x-1/2 px-1.5 py-0.5 rounded bg-slate-900/95 border border-indigo-500/50 text-[10px] font-mono text-indigo-300 shadow-xl opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-20">
+              00:00.00
+            </div>
 
-          <div class="flex items-center gap-1.5">
-            <button id="btn-play" onclick="togglePlay()"
-              class="w-8 h-8 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white flex items-center justify-center transition shadow-md shadow-indigo-600/30">
-              <i id="play-icon" data-lucide="play" class="w-4 h-4 fill-white"></i>
-            </button>
-            <button id="btn-stop" onclick="stopPlayback()"
-              class="w-8 h-8 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 flex items-center justify-center transition border border-slate-700/60">
-              <i data-lucide="square" class="w-3.5 h-3.5 fill-slate-300"></i>
-            </button>
+            <!-- Fixed-Height Scrubber Bar (No height jump on hover) -->
+            <div id="video-preview-timeline-bar" class="relative w-full h-1.5 bg-slate-800 rounded-full transition-all border border-slate-700/60 group-hover:border-indigo-500/40 group-hover:shadow-[0_0_10px_rgba(99,102,241,0.25)]">
+              <div id="video-preview-progress" class="h-full bg-gradient-to-r from-indigo-500 via-violet-500 to-indigo-400 rounded-full w-0 transition-all duration-75 group-hover:shadow-[0_0_12px_rgba(99,102,241,0.8)]"></div>
+            </div>
+
+            <!-- Polished Glowing Thumb Indicator -->
+            <div id="video-preview-thumb" class="absolute top-1/2 -translate-y-1/2 -ml-[6px] w-3 h-3 rounded-full bg-white border-2 border-indigo-500 shadow-[0_0_8px_rgba(99,102,241,0.9)] opacity-0 scale-75 group-hover:opacity-100 group-hover:scale-110 transition-all duration-150 pointer-events-none z-10"></div>
           </div>
 
-          <span id="timecode-total" class="text-xs font-mono font-medium text-slate-400 tracking-wider">00:30.00</span>
+          <!-- Timecode, Playback & Video Volume Controls Row -->
+          <div class="flex items-center justify-between gap-2">
+            <!-- Left: Current / Total Timecode -->
+            <div class="flex items-center gap-1.5 shrink-0">
+              <span id="timecode-current"
+                class="text-xs font-mono font-medium text-slate-200 tracking-wider">00:00.00</span>
+              <span class="text-slate-600 text-xs font-mono font-light">/</span>
+              <span id="timecode-total" class="text-xs font-mono font-medium text-slate-400 tracking-wider">00:00.00</span>
+            </div>
+
+            <!-- Center: Play & Stop Buttons -->
+            <div class="flex items-center gap-1.5 shrink-0">
+              <button id="btn-play" onclick="togglePlay()"
+                title="ចាក់ / ផ្អាក (Play/Pause Space)"
+                class="w-8 h-8 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white flex items-center justify-center transition shadow-md shadow-indigo-600/30 cursor-pointer active:scale-95">
+                <i id="play-icon" data-lucide="play" class="w-4 h-4 fill-white"></i>
+              </button>
+              <button id="btn-stop" onclick="stopPlayback()"
+                title="បញ្ឈប់ (Stop)"
+                class="w-8 h-8 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 flex items-center justify-center transition border border-slate-700/60 cursor-pointer active:scale-95">
+                <i data-lucide="square" class="w-3.5 h-3.5 fill-slate-300"></i>
+              </button>
+            </div>
+
+            <!-- Right: Video Volume Controller ("សារេសម្លេង Video") -->
+            <div class="flex items-center gap-1.5 bg-[#0e1424] border border-slate-700/70 hover:border-indigo-500/50 rounded-lg px-2 py-1 shadow-inner transition group/vol shrink-0"
+              title="សារេសំឡេងវីដេអូដើម (Video Volume Control)">
+              <button id="btn-video-volume-mute" onclick="toggleVideoVolumeMute()"
+                class="text-slate-400 hover:text-indigo-400 transition cursor-pointer flex items-center justify-center p-0.5"
+                title="ចុចដើម្បីបិទ/បើកសំឡេងវីដេអូ (Mute/Unmute Video)">
+                <i id="video-volume-icon" data-lucide="volume-2" class="w-3.5 h-3.5"></i>
+              </button>
+              <input id="video-volume-slider" type="range" min="0" max="100" value="100"
+                oninput="setVideoVolume(this.value)"
+                class="w-14 sm:w-16 h-1 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-indigo-500 focus:outline-hidden" />
+              <span id="video-volume-text" class="text-[10px] font-mono font-semibold text-slate-300 w-7 text-right select-none">100%</span>
+            </div>
+          </div>
         </div>
       </div>
 
-      <!-- SUBTITLE DATA SECTION (Exact equal height with Video Preview) -->
+      <!-- Dubbing Settings Card: Enhanced generous height (h-[285px]) for comfortable spacing -->
       <div
-        class="flex-1 bg-[#0f1422] border border-slate-800/90 rounded-xl p-3 flex flex-col shadow-lg overflow-hidden h-full">
+        class="h-[285px] bg-[#0f1422] border border-slate-800/90 rounded-xl p-3 shadow-lg shrink-0 flex flex-col justify-between overflow-hidden">
+        <!-- Card Header -->
+        <div class="flex items-center justify-between pb-2 mb-1.5 border-b border-slate-800/80">
+          <div class="flex items-center gap-2 text-slate-200 font-semibold text-xs">
+            <i data-lucide="sliders" class="w-4 h-4 text-indigo-400"></i>
+            <span>Dubbing Settings (ការកំណត់)</span>
+          </div>
+          <button id="btn-reset-dubbing-settings" onclick="resetDubbingSettings()"
+            title="ត្រឡប់ទៅការកំណត់ដើម (Reset Defaults)"
+            class="flex items-center gap-1 px-2 py-0.5 text-[11px] font-medium text-slate-400 hover:text-slate-200 bg-slate-800/60 hover:bg-slate-700/60 border border-slate-700/60 rounded-md transition cursor-pointer">
+            <i data-lucide="rotate-ccw" class="w-3 h-3"></i>
+            <span>Reset</span>
+          </button>
+        </div>
+
+        <!-- 6-Parameter 2-Column Grid with comfortable spacing -->
+        <div class="grid grid-cols-2 gap-2 flex-1">
+
+          <!-- 1. End Padding (ថែមម៉ោងនិយាយ) -->
+          <div class="bg-[#141b2e] border border-slate-800/80 rounded-lg px-2.5 py-1.5 flex flex-col justify-between">
+            <div class="flex items-center justify-between">
+              <span class="text-[11px] font-semibold text-slate-300">End Padding</span>
+              <span id="val-end-padding" class="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded bg-indigo-500/20 text-indigo-400 border border-indigo-500/30">+0.70s</span>
+            </div>
+            <input type="range" id="setting-end-padding" min="0.0" max="1.5" step="0.05" value="0.70"
+              class="w-full accent-indigo-500 h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer my-1">
+            <span class="text-[9.5px] text-slate-400 truncate">ថែមម៉ោងដកដង្ហើមសំឡេង AI</span>
+          </div>
+
+          <!-- 2. Max Merged Limit (កម្រិតបូកឃ្លា) -->
+          <div class="bg-[#141b2e] border border-slate-800/80 rounded-lg px-2.5 py-1.5 flex flex-col justify-between">
+            <div class="flex items-center justify-between">
+              <span class="text-[11px] font-semibold text-slate-300">Max Merged</span>
+              <span id="val-max-merge" class="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">3 ឃ្លា</span>
+            </div>
+            <input type="range" id="setting-max-merge" min="1" max="10" step="1" value="3"
+              class="w-full accent-emerald-500 h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer my-1">
+            <span class="text-[9.5px] text-slate-400 truncate">កម្រិតបូកឃ្លា (មិនឱ្យវែងពេក)</span>
+          </div>
+
+          <!-- 3. Merge Gap (គម្លាតភ្ជាប់ឃ្លា) -->
+          <div class="bg-[#141b2e] border border-slate-800/80 rounded-lg px-2.5 py-1.5 flex flex-col justify-between">
+            <div class="flex items-center justify-between">
+              <span class="text-[11px] font-semibold text-slate-300">Merge Gap</span>
+              <span id="val-merge-gap" class="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded bg-cyan-500/20 text-cyan-400 border border-cyan-500/30">0.20s</span>
+            </div>
+            <input type="range" id="setting-merge-gap" min="0.05" max="0.50" step="0.05" value="0.20"
+              class="w-full accent-cyan-500 h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer my-1">
+            <span class="text-[9.5px] text-slate-400 truncate">គម្លាតឈប់និយាយដើម្បីបូកចូល</span>
+          </div>
+
+          <!-- 4. VAD Filter (ភាពវៃឆ្លាតចាប់សំឡេង) -->
+          <div class="bg-[#141b2e] border border-slate-800/80 rounded-lg px-2.5 py-1.5 flex flex-col justify-between">
+            <div class="flex items-center justify-between">
+              <span class="text-[11px] font-semibold text-slate-300">VAD Filter</span>
+              <span id="val-vad-label" class="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded bg-violet-500/20 text-violet-400 border border-violet-500/30">0.10 (ម៉ត់)</span>
+            </div>
+            <input type="range" id="setting-vad-threshold" min="0.0" max="1.0" step="0.05" value="0.10"
+              class="w-full accent-violet-500 h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer my-1">
+            <span class="text-[9.5px] text-slate-400 truncate">Silero VAD (0=ម៉ត់ 1=តឹងរ៉ឹង)</span>
+          </div>
+
+          <!-- 5. BGM Volume (កម្រិតភ្លេងកំដរ) -->
+          <div class="bg-[#141b2e] border border-slate-800/80 rounded-lg px-2.5 py-1.5 flex flex-col justify-between">
+            <div class="flex items-center justify-between">
+              <span class="text-[11px] font-semibold text-slate-300">BGM Volume</span>
+              <span id="val-bgm-volume" class="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-400 border border-amber-500/30">8%</span>
+            </div>
+            <input type="range" id="setting-bgm-volume" min="0" max="30" step="1" value="8"
+              class="w-full accent-amber-500 h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer my-1">
+            <span class="text-[9.5px] text-slate-400 truncate">កម្រិតភ្លេងកំដរ BGM Ducking</span>
+          </div>
+
+          <!-- 6. Mute Original Voice (លុបសំឡេងដើម) -->
+          <div class="bg-[#141b2e] border border-slate-800/80 rounded-lg px-2.5 py-1.5 flex flex-col justify-between">
+            <div class="flex items-center justify-between">
+              <span class="text-[11px] font-semibold text-slate-300">Mute Voice</span>
+              <span id="val-mute-spoken" class="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded bg-rose-500/20 text-rose-400 border border-rose-500/30">ON</span>
+            </div>
+            <div class="flex items-center justify-between my-1">
+              <span class="text-[10px] text-slate-300">លុបសំឡេងដើម</span>
+              <label class="relative inline-flex items-center cursor-pointer select-none">
+                <input type="checkbox" id="setting-remove-spoken" checked class="sr-only peer">
+                <div class="w-8 h-4 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:bg-rose-600 after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-3 after:w-3.5 after:transition-all peer-checked:after:translate-x-3.5 transition-colors"></div>
+              </label>
+            </div>
+            <span class="text-[9.5px] text-slate-400 truncate">រក្សាភ្លេង BGM ពេល Dubbing</span>
+          </div>
+
+        </div>
+      </div>
+
+    </div>
+
+    <!-- ==================== RIGHT COLUMN: Subtitle Data & Timeline Editor ==================== -->
+    <div class="flex-1 flex flex-col gap-2.5 min-w-0 h-full overflow-hidden">
+
+      <!-- SUBTITLE DATA SECTION (flex-1 min-h-0: Expands and takes all available space!) -->
+      <div id="subtitle-section"
+        class="flex-1 bg-[#0f1422] border border-slate-800/90 rounded-xl p-3 flex flex-col shadow-lg overflow-hidden min-h-0 transition-all duration-200">
 
         <!-- Table Top Bar / Controls -->
         <div class="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-800/80 shrink-0">
@@ -251,10 +426,20 @@
                 <i data-lucide="trash-2" class="w-3 h-3"></i>
                 <span>Delete</span>
               </button>
-              <button onclick="exportSRTFile()" title="Download .srt File"
-                class="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-emerald-900/40 text-slate-300 hover:text-emerald-300 border border-slate-700 text-xs transition">
+              <button onclick="triggerSRTUpload()" title="Import .srt Subtitle File (នាំចូលឯកសារ Subtitle .srt)"
+                class="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-amber-900/40 text-slate-300 hover:text-amber-300 border border-slate-700 text-xs transition cursor-pointer">
+                <i data-lucide="file-up" class="w-3.5 h-3.5 text-amber-400"></i>
+                <span>Import SRT</span>
+              </button>
+              <button onclick="exportSRTFile()" title="Export .srt Subtitle File (ទាញយកឯកសារ Subtitle .srt ស្តង់ដារ)"
+                class="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-emerald-900/40 text-slate-300 hover:text-emerald-300 border border-slate-700 text-xs transition cursor-pointer">
                 <i data-lucide="download" class="w-3 h-3 text-emerald-400"></i>
                 <span>Export SRT</span>
+              </button>
+              <button id="btn-toggle-fullscreen" onclick="toggleSubtitleFullscreen()" title="ពង្រីកពេញអេក្រង់ (Fullscreen / Esc)"
+                class="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-indigo-900/50 text-indigo-300 hover:text-indigo-200 border border-indigo-500/40 hover:border-indigo-400 text-xs font-medium transition shadow-sm">
+                <i id="fullscreen-icon" data-lucide="maximize-2" class="w-3.5 h-3.5 text-indigo-400"></i>
+                <span id="fullscreen-text">Fullscreen</span>
               </button>
             </div>
           </div>
@@ -262,246 +447,174 @@
           <!-- Bulk Voice Profile Controls -->
           <div class="flex items-center gap-2 text-xs">
             <span class="text-slate-400 text-[11px]">Set all voices to:</span>
-            <div class="flex items-center bg-[#141b2e] rounded-lg p-0.5 border border-slate-700/80">
-              <button onclick="setAllVoices('Male')"
-                class="px-2.5 py-1 rounded-md text-xs font-medium text-slate-300 hover:bg-slate-700/60 hover:text-white transition">👨
-                Male</button>
-              <button onclick="setAllVoices('Female')"
-                class="px-2.5 py-1 rounded-md text-xs font-medium text-slate-300 hover:bg-slate-700/60 hover:text-white transition">👩
-                Female</button>
+            <div class="flex items-center gap-1.5">
+              <div class="flex items-center bg-[#141b2e] rounded-lg p-0.5 border border-slate-700/80">
+                <button onclick="setAllVoices('Male')"
+                  class="px-2 py-0.5 rounded-md text-[11px] font-medium text-slate-300 hover:bg-slate-700/60 hover:text-white transition">👨 Piseth</button>
+                <button onclick="setAllVoices('Female')"
+                  class="px-2 py-0.5 rounded-md text-[11px] font-medium text-slate-300 hover:bg-slate-700/60 hover:text-white transition">👩 Sreymom</button>
+              </div>
+              <select id="bulk-character-voice-select" onchange="if(this.value) { setAllVoices(this.value); this.value=''; }"
+                class="hidden bg-[#141b2e] border border-slate-700/80 rounded-lg px-2 py-1 text-[11px] text-purple-300 hover:border-purple-500/50 outline-hidden cursor-pointer">
+                <option value="">🎭 Select Character...</option>
+              </select>
             </div>
           </div>
         </div>
-          <!-- Transcription Progress Indicator (Hidden by default) -->
-          <div id="transcribe-progress-banner"
-            class="hidden mt-2 p-2.5 rounded-lg bg-indigo-950/40 border border-indigo-500/40 text-xs flex items-center justify-between gap-3 animate-pulse">
-            <div class="flex items-center gap-2.5 text-indigo-200">
-              <div class="w-4 h-4 border-2 border-indigo-400 border-t-transparent rounded-full animate-spin"></div>
-              <span id="transcribe-status-text" class="font-medium">កំពុងទាញយកសំឡេងពីវីដេអូ...</span>
+
+        <!-- Transcription Progress Indicator (Hidden by default) -->
+        <div id="transcribe-progress-banner"
+          class="hidden mt-2 p-2.5 rounded-lg bg-indigo-950/40 border border-indigo-500/40 text-xs flex items-center justify-between gap-3 animate-pulse">
+          <div class="flex items-center gap-2.5 text-indigo-200">
+            <div class="w-4 h-4 border-2 border-indigo-400 border-t-transparent rounded-full animate-spin"></div>
+            <span id="transcribe-status-text" class="font-medium">កំពុងទាញយកសំឡេងពីវីដេអូ...</span>
+          </div>
+          <span class="text-[10px] bg-indigo-500/20 text-indigo-300 px-2 py-0.5 rounded-full font-mono">Faster-Whisper</span>
+        </div>
+
+        <!-- Subtitle List Table -->
+        <div class="flex-1 overflow-y-auto mt-2 pr-1 min-h-0 relative">
+          <table class="w-full text-left text-xs border-collapse">
+            <thead>
+              <tr
+                class="text-[11px] font-semibold text-slate-400 uppercase tracking-wider border-b border-slate-800/80 sticky top-0 bg-[#0f1422] z-10">
+                <th class="py-2.5 px-3 w-10 text-center">
+                  <input type="checkbox" id="select-all-subs" onchange="selectAllSubtitles(this.checked)"
+                    class="rounded border-slate-700 bg-slate-800 text-indigo-600 focus:ring-0 focus:ring-offset-0 cursor-pointer" />
+                </th>
+                <th class="py-2.5 px-2.5 w-24">START</th>
+                <th class="py-2.5 px-2.5 w-24">END</th>
+                <th class="py-2.5 px-3 text-slate-300 w-[28%] min-w-[180px]">ORIGINAL TEXT</th>
+                <th class="py-2.5 px-3 font-khmer text-indigo-300 min-w-[260px]">KHMER TEXT (EDITABLE)</th>
+                <th class="py-2.5 px-3 w-36">VOICE PROFILE</th>
+                <th class="py-2.5 px-3 w-28 text-center">
+                  <div class="flex items-center justify-center gap-1.5 text-slate-300">
+                    <i data-lucide="volume-2" class="w-3.5 h-3.5 text-indigo-400"></i>
+                    <span>SOUND</span>
+                  </div>
+                </th>
+              </tr>
+            </thead>
+            <tbody id="subtitle-table-body" class="divide-y divide-slate-800/50">
+              <!-- Dynamically populated rows -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- TIMELINE EDITOR SECTION (Optimized Height: h-[190px]) -->
+      <div
+        class="h-[190px] bg-[#0f1422] border border-slate-800/90 rounded-xl p-3 flex flex-col shadow-lg overflow-hidden justify-between shrink-0">
+
+        <!-- Timeline Header Controls -->
+        <div class="flex flex-wrap items-center justify-between gap-2 pb-1.5 border-b border-slate-800/80">
+          <div class="flex items-center gap-3">
+            <span class="text-xs font-bold text-slate-200 tracking-wide">Timeline Editor</span>
+
+            <!-- Accurate Zoom slider -->
+            <div class="flex items-center gap-1.5">
+              <span class="text-[10px] text-slate-400">Zoom:</span>
+              <input id="timeline-zoom" type="range" min="0.6" max="2.5" step="0.1" value="1"
+                oninput="setTimelineZoom(this.value)"
+                class="custom-range w-16 h-1 bg-slate-800 rounded-lg appearance-none cursor-pointer" />
             </div>
-            <span class="text-[10px] bg-indigo-500/20 text-indigo-300 px-2 py-0.5 rounded-full font-mono">Gemini
-              AI</span>
           </div>
 
-          <!-- Subtitle List Table -->
-          <div class="flex-1 overflow-y-auto mt-2 pr-1 min-h-0 relative">
-            <table class="w-full text-left text-xs border-collapse">
-              <thead>
-                <tr
-                  class="text-[11px] font-semibold text-slate-400 uppercase tracking-wider border-b border-slate-800/80 sticky top-0 bg-[#0f1422] z-10">
-                  <th class="py-2.5 px-3 w-10 text-center">
-                    <input type="checkbox" id="select-all-subs" onchange="selectAllSubtitles(this.checked)"
-                      class="rounded border-slate-700 bg-slate-800 text-indigo-600 focus:ring-0 focus:ring-offset-0 cursor-pointer" />
-                  </th>
-                  <th class="py-2.5 px-2.5 w-24">START</th>
-                  <th class="py-2.5 px-2.5 w-24">END</th>
-                  <th class="py-2.5 px-3 text-slate-300">ORIGINAL TEXT</th>
-                  <th class="py-2.5 px-3 font-khmer text-indigo-300">KHMER TEXT (EDITABLE)</th>
-                  <th class="py-2.5 px-3 w-36">VOICE PROFILE</th>
-                  <th class="py-2.5 px-3 w-24 text-center">STATUS</th>
-                </tr>
-              </thead>
-              <tbody id="subtitle-table-body" class="divide-y divide-slate-800/50">
-                <!-- Dynamically populated rows -->
-              </tbody>
-            </table>
+          <!-- Quick Action Buttons: Core Workflow (Transcribe -> Translate -> Generate Audio) -->
+          <div class="flex items-center gap-2 flex-wrap text-xs">
+            <!-- Transcribe Button with Faster-Whisper -->
+            <button id="btn-transcribe" onclick="startTranscription()"
+              class="flex items-center gap-1 px-3 py-1 rounded-lg bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white text-xs font-medium shadow-sm transition disabled:opacity-50 disabled:cursor-not-allowed">
+              <i data-lucide="sparkles" class="w-3.5 h-3.5 text-amber-300"></i>
+              <span id="transcribe-btn-text">Transcribe</span>
+            </button>
+
+            <!-- Translate Button with Gemini AI -->
+            <button id="btn-translate" onclick="startTranslation()" title="Translate to Khmer via Gemini AI"
+              class="flex items-center gap-1 px-3 py-1 rounded-lg bg-gradient-to-r from-violet-600 to-purple-600 hover:from-violet-500 hover:to-purple-500 text-white text-xs font-medium shadow-sm transition disabled:opacity-50 disabled:cursor-not-allowed">
+              <i data-lucide="languages" class="w-3.5 h-3.5 text-indigo-200"></i>
+              <span id="translate-btn-text">Translate</span>
+            </button>
+
+            <!-- Generate Voice CTA -->
+            <button id="btn-generate-voice" onclick="generateAllVoice()" title="Generate Khmer Speech via Edge TTS"
+              class="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-gradient-to-r from-indigo-600 via-indigo-500 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white text-xs font-medium shadow-sm transition transform active:scale-95 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed">
+              <i data-lucide="mic" class="w-3.5 h-3.5 text-pink-300"></i>
+              <span id="generate-voice-text">Generate Voice</span>
+            </button>
+
+            <!-- Re-Generate Voice CTA (Checked rows only) -->
+            <button id="btn-regenerate-voice" onclick="reGenerateSelectedVoices()" title="Re-Generate Voice សម្រាប់តែជួរណាដែលបាន Check"
+              class="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/40 text-amber-300 text-xs font-medium shadow-sm transition transform active:scale-95 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed">
+              <i data-lucide="refresh-cw" class="w-3.5 h-3.5 text-amber-300"></i>
+              <span id="regenerate-voice-text">Re-Generate Voice</span>
+            </button>
+
+            <!-- Generate Video CTA (The final step in dubbing workflow!) -->
+            <button id="btn-generate-video" onclick="generateDubbedVideo()" title="Export & Generate Dubbed Video with Mixed Audio"
+              class="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-500 hover:from-emerald-500 hover:to-teal-500 text-white text-xs font-semibold shadow-md shadow-emerald-600/30 transition transform active:scale-95 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed">
+              <i data-lucide="video" class="w-3.5 h-3.5 text-emerald-200"></i>
+              <span id="generate-video-text">Generate Video</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Interactive Tracks Scroll Container -->
+        <div class="relative mt-1 overflow-x-auto select-none pb-0.5" id="timeline-scroll-container">
+
+          <!-- Dynamic Time Ruler -->
+          <div class="relative h-4 border-b border-slate-800 pl-9 pr-4 text-[10px]" id="timeline-ruler">
+            <!-- Dynamically populated time markings -->
+          </div>
+
+          <!-- Tracks Container with Placed Red Playhead Needle -->
+          <div class="relative flex flex-col gap-1 py-1 pl-9 pr-4" id="tracks-wrapper">
+
+            <!-- Red Playhead Needle Indicator -->
+            <div id="playhead"
+              class="playhead-needle absolute top-0 bottom-0 left-[45px] w-[1.5px] bg-rose-500 z-20 pointer-events-none transition-none">
+              <div class="w-2 h-2 -ml-[3px] bg-rose-500 rounded-sm rotate-45 shadow-sm"></div>
+            </div>
+
+            <!-- Track T1 (Text Subtitles Track) -->
+            <div class="flex items-center gap-1.5 h-7">
+              <span
+                class="w-7 text-[9.5px] font-bold text-indigo-400 bg-slate-800/80 border border-slate-700/60 rounded px-1 py-0.5 text-center shrink-0">T1</span>
+              <div
+                class="flex-1 h-full bg-[#0a0e1a] rounded-lg border border-slate-800/90 relative overflow-hidden flex items-center px-1"
+                id="track-t1">
+                <!-- Subtitle blocks -->
+              </div>
+            </div>
+
+            <!-- Track A1 (Dubbed Khmer Audio Track) -->
+            <div class="flex items-center gap-1.5 h-7">
+              <span
+                class="w-7 text-[9.5px] font-bold text-violet-400 bg-slate-800/80 border border-slate-700/60 rounded px-1 py-0.5 text-center shrink-0">A1</span>
+              <div
+                class="flex-1 h-full bg-[#0a0e1a] rounded-lg border border-slate-800/90 relative overflow-hidden flex items-center px-1"
+                id="track-a1">
+                <!-- Audio blocks -->
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- BOTTOM STATUS BAR -->
+        <div class="pt-1 border-t border-slate-800/80 flex flex-wrap items-center justify-between gap-2 text-[10px]">
+          <div class="flex items-center gap-1.5 text-[10px] text-slate-400 font-mono">
+            <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+            <span>Studio Ready</span>
+          </div>
+
+          <div class="text-[10px] text-slate-500 font-mono">
+            AI Engine: <span class="text-indigo-400">Microsoft Edge TTS (Piseth/Sreymom)</span>
           </div>
         </div>
       </div>
 
-      <!-- BOTTOM ROW: Workspace Tools (Left, Matching Width) & Timeline Editor (Right) -->
-      <div class="flex gap-2.5 shrink-0 items-stretch">
+    </div>
 
-        <!-- Workspace Tools Card: Matching width with Video Preview -->
-        <div
-          class="w-[440px] lg:w-[500px] xl:w-[540px] bg-[#0f1422] border border-slate-800/90 rounded-xl p-3 shadow-lg shrink-0 flex flex-col justify-between">
-          <div class="flex items-center gap-2 text-slate-200 font-semibold text-xs mb-2">
-            <i data-lucide="layout-grid" class="w-4 h-4 text-indigo-400"></i>
-            <span>Workspace Tools</span>
-          </div>
-
-          <div class="grid grid-cols-4 gap-2 flex-1 items-center">
-            <!-- Load Video Button -->
-            <button onclick="triggerVideoUpload()"
-              class="flex flex-col items-center justify-center gap-1.5 p-2.5 rounded-xl bg-[#141b2e] hover:bg-[#1a233b] border border-slate-800 hover:border-slate-700 transition group h-full">
-              <div
-                class="w-7 h-7 rounded-lg bg-amber-500/10 text-amber-400 flex items-center justify-center group-hover:scale-110 transition">
-                <i data-lucide="folder-open" class="w-4 h-4"></i>
-              </div>
-              <span class="text-[11px] font-medium text-slate-300 text-center leading-tight">Load Video</span>
-            </button>
-
-            <!-- Load BGM Button -->
-            <button onclick="loadDemoBGM()"
-              class="flex flex-col items-center justify-center gap-1.5 p-2.5 rounded-xl bg-[#141b2e] hover:bg-[#1a233b] border border-slate-800 hover:border-slate-700 transition group h-full">
-              <div
-                class="w-7 h-7 rounded-lg bg-violet-500/10 text-violet-400 flex items-center justify-center group-hover:scale-110 transition">
-                <i data-lucide="music" class="w-4 h-4"></i>
-              </div>
-              <span class="text-[11px] font-medium text-slate-300 text-center leading-tight">Load BGM</span>
-            </button>
-
-            <!-- Isolate BGM Button -->
-            <button id="btn-isolate" onclick="toggleIsolateBGM()"
-              class="flex flex-col items-center justify-center gap-1.5 p-2.5 rounded-xl bg-[#141b2e] hover:bg-[#1a233b] border border-slate-800 hover:border-slate-700 transition group h-full">
-              <div
-                class="w-7 h-7 rounded-lg bg-indigo-500/10 text-indigo-400 flex items-center justify-center group-hover:scale-110 transition">
-                <i data-lucide="sparkles" class="w-4 h-4"></i>
-              </div>
-              <span id="isolate-label" class="text-[11px] font-medium text-slate-300 text-center leading-tight">Isolate
-                BGM</span>
-            </button>
-
-            <!-- Mute Audio Button -->
-            <button id="btn-mute" onclick="toggleMuteAudio()"
-              class="flex flex-col items-center justify-center gap-1.5 p-2.5 rounded-xl bg-[#141b2e] hover:bg-[#1a233b] border border-slate-800 hover:border-slate-700 transition group h-full">
-              <div
-                class="w-7 h-7 rounded-lg bg-rose-500/10 text-rose-400 flex items-center justify-center group-hover:scale-110 transition">
-                <i id="mute-icon" data-lucide="mic-off" class="w-4 h-4"></i>
-              </div>
-              <span id="mute-label" class="text-[11px] font-medium text-slate-300 text-center leading-tight">Mute
-                Audio</span>
-            </button>
-          </div>
-        </div>
-
-        <!-- TIMELINE EDITOR SECTION -->
-        <div
-          class="flex-1 bg-[#0f1422] border border-slate-800/90 rounded-xl p-3 flex flex-col shadow-lg overflow-hidden">
-
-          <!-- Timeline Header Controls -->
-          <div class="flex flex-wrap items-center justify-between gap-2 pb-2.5 border-b border-slate-800/80">
-            <div class="flex items-center gap-4">
-              <span class="text-xs font-bold text-slate-200 tracking-wide">Timeline Editor</span>
-
-              <!-- Accurate Zoom slider -->
-              <div class="flex items-center gap-2">
-                <span class="text-[11px] text-slate-400">Zoom:</span>
-                <input id="timeline-zoom" type="range" min="0.6" max="2.5" step="0.1" value="1"
-                  oninput="setTimelineZoom(this.value)"
-                  class="custom-range w-20 h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer" />
-              </div>
-            </div>
-
-            <!-- Quick Action Buttons -->
-            <div class="flex items-center gap-2 flex-wrap text-xs">
-              <!-- Language tag -->
-              <div
-                class="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-800 border border-slate-700 text-slate-300">
-                <i data-lucide="globe" class="w-3.5 h-3.5 text-indigo-400"></i>
-                <span class="text-xs font-khmer">ភាសាខ្មែរ (Khmer)</span>
-              </div>
-
-              <!-- Transcribe Button with Gemini -->
-              <button id="btn-transcribe" onclick="startTranscription()"
-                class="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white font-medium shadow-md shadow-indigo-600/30 transition disabled:opacity-50 disabled:cursor-not-allowed">
-                <i data-lucide="sparkles" class="w-3.5 h-3.5 text-amber-300"></i>
-                <span id="transcribe-btn-text">Transcribe</span>
-              </button>
-
-              <!-- Auto-Fit -->
-              <button id="btn-autofit" onclick="toggleAutoFit()"
-                class="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 transition">
-                <i data-lucide="zap" class="w-3.5 h-3.5 text-amber-500"></i>
-                <span id="autofit-text">Auto-Fit: OFF</span>
-              </button>
-
-              <!-- Sync End -->
-              <button onclick="syncTrackEnd()"
-                class="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 transition">
-                <i data-lucide="link" class="w-3.5 h-3.5 text-slate-400"></i>
-                <span>Sync End</span>
-              </button>
-
-              <!-- Generate Audio CTA -->
-              <button onclick="generateAllAudio()"
-                class="flex items-center gap-1.5 px-3.5 py-1 rounded-lg bg-gradient-to-r from-indigo-600 via-indigo-500 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white font-medium shadow-md shadow-indigo-500/20 transition transform active:scale-95">
-                <i data-lucide="music-2" class="w-3.5 h-3.5"></i>
-                <span>Generate Audio</span>
-              </button>
-            </div>
-          </div>
-
-          <!-- Interactive Tracks Scroll Container -->
-          <div class="relative mt-2 overflow-x-auto select-none pb-1" id="timeline-scroll-container">
-
-            <!-- Dynamic Time Ruler -->
-            <div class="relative h-5 border-b border-slate-800 pl-10 pr-4" id="timeline-ruler">
-              <!-- Dynamically populated time markings -->
-            </div>
-
-            <!-- Tracks Container with Placed Red Playhead Needle -->
-            <div class="relative flex flex-col gap-1.5 py-2 pl-10 pr-4" id="tracks-wrapper">
-
-              <!-- Red Playhead Needle Indicator -->
-              <div id="playhead"
-                class="playhead-needle absolute top-0 bottom-0 left-[50px] w-[1.5px] bg-rose-500 z-20 pointer-events-none transition-none">
-                <div class="w-2.5 h-2.5 -ml-[4px] bg-rose-500 rounded-sm rotate-45 shadow-sm"></div>
-              </div>
-
-              <!-- Track T1 (Text Subtitles Track) -->
-              <div class="flex items-center gap-2 h-9">
-                <span
-                  class="w-8 text-[11px] font-bold text-indigo-400 bg-slate-800/80 border border-slate-700/60 rounded px-1.5 py-1 text-center shrink-0">T1</span>
-                <div
-                  class="flex-1 h-full bg-[#0a0e1a] rounded-lg border border-slate-800/90 relative overflow-hidden flex items-center px-1"
-                  id="track-t1">
-                  <!-- Subtitle blocks -->
-                </div>
-              </div>
-
-              <!-- Track A1 (Dubbed Khmer Audio Track) -->
-              <div class="flex items-center gap-2 h-9">
-                <span
-                  class="w-8 text-[11px] font-bold text-violet-400 bg-slate-800/80 border border-slate-700/60 rounded px-1.5 py-1 text-center shrink-0">A1</span>
-                <div
-                  class="flex-1 h-full bg-[#0a0e1a] rounded-lg border border-slate-800/90 relative overflow-hidden flex items-center px-1"
-                  id="track-a1">
-                  <!-- Audio blocks -->
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <!-- BOTTOM RENDER QUEUE STATUS BAR -->
-          <div class="mt-2 pt-2 border-t border-slate-800/80 flex flex-wrap items-center justify-between gap-2 text-xs">
-            <div class="flex items-center gap-2">
-              <span class="text-[10px] font-bold text-slate-400 tracking-wider">RENDER QUEUE</span>
-              <div class="flex items-center gap-2 flex-wrap" id="render-queue-list">
-                <!-- Item 1: Done -->
-                <span
-                  class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-950/40 text-emerald-300 border border-emerald-500/30 text-[11px]">
-                  <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
-                  <span>video_01.mp4</span>
-                  <span class="font-medium text-emerald-400">✓ Done</span>
-                </span>
-
-                <!-- Item 2: Processing -->
-                <span
-                  class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-indigo-950/40 text-indigo-300 border border-indigo-500/30 text-[11px]">
-                  <span class="w-1.5 h-1.5 rounded-full bg-indigo-400 animate-ping"></span>
-                  <span>video_02.mp4</span>
-                  <i data-lucide="loader-2" class="w-3 h-3 animate-spin text-indigo-400"></i>
-                  <span class="font-mono text-indigo-300">47%</span>
-                </span>
-
-                <!-- Item 3: Queue -->
-                <span
-                  class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-950/40 text-amber-300 border border-amber-500/30 text-[11px]">
-                  <span class="w-1.5 h-1.5 rounded-full bg-amber-400"></span>
-                  <span>tutorial_03.mp4</span>
-                  <span class="text-amber-400/90">⌛ Queue</span>
-                </span>
-              </div>
-            </div>
-
-            <div class="text-[11px] text-slate-500">
-              AI Engine: <span class="text-slate-400">Microsoft Edge TTS (Piseth/Sreymom)</span>
-            </div>
-          </div>
-
-        </div>
-      </div>
   </main>
 
   <!-- Toast Notification -->
@@ -512,7 +625,7 @@
   </div>
 
   <!-- Settings Modal -->
-  <div id="settings-modal"
+  <div id="settings-modal" onclick="if (event.target === this) closeSettingsModal()"
     class="fixed inset-0 bg-black/70 backdrop-blur-xs hidden items-center justify-center z-50 p-4">
     <div class="bg-[#111728] border border-slate-700/80 rounded-2xl w-full max-w-md p-5 shadow-2xl text-xs space-y-4">
       <div class="flex items-center justify-between border-b border-slate-800 pb-3">
@@ -542,10 +655,25 @@
         </div>
 
         <div>
-          <label class="block text-slate-400 mb-1">Google Gemini API Key(s) (សម្រាប់ AI Transcription)</label>
+          <label class="block text-slate-400 mb-1">Google Gemini API Key(s) (សម្រាប់ AI Translation)</label>
           <textarea id="input-gemini-api-key" rows="2" placeholder="AIzaSy... (អាចបញ្ចូល Key មួយ ឬច្រើន ដោយខណ្ឌដោយសញ្ញាក្បៀស ឬចុះបន្ទាត់)"
             class="w-full bg-slate-800 border border-slate-700 rounded-lg p-2 text-slate-200 font-mono text-xs focus:border-indigo-500 outline-hidden resize-y"></textarea>
           <p class="text-[10px] text-slate-500 mt-1">💡 អាចបញ្ចូល Key ច្រើន (មកពី Gmail ផ្សេងៗគ្នា) ដើម្បីកុំឱ្យជាប់កូតា ២៤ ម៉ោង។ ប្រព័ន្ធនឹងបង្វិល Key និង Auto-Failover ដោយស្វ័យប្រវត្តិ។</p>
+        </div>
+
+        <div>
+          <div class="flex items-center justify-between mb-1">
+            <label class="text-slate-400 flex items-center gap-1.5">
+              <span class="text-emerald-400 font-bold">⚡</span>
+              <span>Groq API Key (សម្រាប់ Whisper Large-v3 / Turbo)</span>
+            </label>
+            <a href="https://console.groq.com/keys" target="_blank" rel="noopener noreferrer" class="text-[11px] text-emerald-400 hover:text-emerald-300 hover:underline inline-flex items-center gap-1">
+              <span>យក Free API Key ↗</span>
+            </a>
+          </div>
+          <input type="password" id="input-groq-api-key" placeholder="gsk_..."
+            class="w-full bg-slate-800 border border-slate-700 rounded-lg p-2 text-slate-200 font-mono text-xs focus:border-emerald-500 outline-hidden">
+          <p class="text-[10px] text-slate-500 mt-1">💡 Ultra-fast Cloud Transcription (ល្បឿន 1-2s ក្នុងមួយវីដេអូ ភាពត្រឹមត្រូវ 99%)។ Free 100% ពី Groq Cloud។</p>
         </div>
 
         <div class="flex items-center justify-between py-2 border-t border-slate-800">
@@ -567,8 +695,325 @@
     </div>
   </div>
 
+  <!-- Export Video Modal -->
+  <div id="export-video-modal" onclick="if (event.target === this) closeExportModal()"
+    class="fixed inset-0 bg-black/75 backdrop-blur-xs hidden items-center justify-center z-50 p-4">
+    <div class="bg-[#111728] border border-slate-700/80 rounded-2xl w-full max-w-xl p-5 shadow-2xl text-xs space-y-4 max-h-[92vh] overflow-y-auto">
+      
+      <!-- Modal Header -->
+      <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+        <div class="flex items-center gap-2">
+          <div class="p-1.5 bg-emerald-500/10 border border-emerald-500/30 rounded-lg text-emerald-400">
+            <i data-lucide="download" class="w-4 h-4"></i>
+          </div>
+          <div>
+            <h3 class="text-sm font-semibold text-white">នាំចេញវីដេអូ (Export Dubbed Video)</h3>
+            <p class="text-[11px] text-slate-400">កំណត់ឈ្មោះ ទីតាំង និងកម្រិតច្បាស់នៃវីដេអូបញ្ចូលសំឡេងរួច</p>
+          </div>
+        </div>
+        <button onclick="closeExportModal()" class="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition">
+          <i data-lucide="x" class="w-4 h-4"></i>
+        </button>
+      </div>
+
+      <!-- Video After Preview -->
+      <div class="space-y-1.5">
+        <div class="flex items-center justify-between">
+          <label class="block text-slate-300 font-medium text-xs flex items-center gap-1.5">
+            <i data-lucide="play-circle" class="w-3.5 h-3.5 text-teal-400"></i>
+            <span>វីដេអូក្រោយបញ្ចូលសំឡេងរួច (Video After Dubbing)</span>
+          </label>
+          <span class="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-medium">Preview</span>
+        </div>
+
+        <!-- Video Player Element -->
+        <div class="relative bg-black rounded-xl overflow-hidden border border-slate-700/80 shadow-inner flex items-center justify-center min-h-[160px]">
+          <video id="export-modal-video" controls class="w-full max-h-56 object-contain"></video>
+          
+          <!-- Fallback when dubbed video is not generated yet -->
+          <div id="export-no-video-banner" class="hidden absolute inset-0 bg-[#0d121f]/95 p-4 flex flex-col items-center justify-center text-center space-y-2.5">
+            <div class="p-2.5 rounded-full bg-amber-500/10 text-amber-400 border border-amber-500/20">
+              <i data-lucide="alert-triangle" class="w-6 h-6"></i>
+            </div>
+            <div>
+              <p class="font-medium text-xs text-amber-200">មិនទាន់បាន Generate វីដេអូ Dubbed នៅឡើយទេ!</p>
+              <p class="text-[11px] text-slate-400 mt-0.5">សូមចុច Generate Video ជាមុន ដើម្បីទាញយក និងនាំចេញវីដេអូ។</p>
+            </div>
+            <button type="button" onclick="triggerGenerateFromExportModal()"
+              class="inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg font-medium text-xs shadow-md transition active:scale-95 cursor-pointer">
+              <i data-lucide="sparkles" class="w-3.5 h-3.5"></i>
+              <span>បង្កើតវីដេអូឥឡូវនេះ (Generate Now)</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Export Configuration Settings -->
+      <div class="space-y-3 pt-1">
+        <!-- 1. File Name -->
+        <div>
+          <label class="block text-slate-300 font-medium mb-1 flex items-center justify-between">
+            <span class="flex items-center gap-1.5">
+              <i data-lucide="file-video" class="w-3.5 h-3.5 text-indigo-400"></i>
+              <span>ឈ្មោះឯកសារវីដេអូ (File Name)</span>
+            </span>
+            <span class="text-[10px] text-slate-500">.mp4 ស្វ័យប្រវត្តិ</span>
+          </label>
+          <input type="text" id="export-file-name" placeholder="my_dubbed_video.mp4"
+            class="w-full bg-slate-800/90 border border-slate-700 rounded-lg px-3 py-2 text-slate-200 font-mono text-xs focus:border-indigo-500 outline-hidden transition">
+        </div>
+
+        <!-- 2. Target Path -->
+        <div>
+          <label class="block text-slate-300 font-medium mb-1 flex items-center justify-between">
+            <span class="flex items-center gap-1.5">
+              <i data-lucide="folder" class="w-3.5 h-3.5 text-indigo-400"></i>
+              <span>ទីតាំងរក្សាទុក (Export Path)</span>
+            </span>
+            <button type="button" onclick="resetExportPathToDefault()" class="text-[10px] text-indigo-400 hover:text-indigo-300 underline cursor-pointer">
+              កំណត់ឡើងវិញ (Reset Default)
+            </button>
+          </label>
+          <div class="flex gap-2">
+            <input type="text" id="export-save-path" value="storage/exports" placeholder="storage/exports ឬ D:/MyVideos"
+              class="flex-1 bg-slate-800/90 border border-slate-700 rounded-lg px-3 py-2 text-slate-200 font-mono text-xs focus:border-indigo-500 outline-hidden transition">
+          </div>
+          <p class="text-[10px] text-slate-500 mt-1">💡 អាចទុកដើម (<code>storage/exports</code>) ឬបញ្ជាក់ផ្លូវ Folder លើកុំព្យូទ័ររបស់អ្នក។</p>
+        </div>
+
+        <!-- 3. Quality Selection -->
+        <div>
+          <label class="block text-slate-300 font-medium mb-1 flex items-center gap-1.5">
+            <i data-lucide="layers" class="w-3.5 h-3.5 text-indigo-400"></i>
+            <span>កម្រិតច្បាស់វីដេអូ (Video Quality & Bitrate)</span>
+          </label>
+          <select id="export-quality-select"
+            class="w-full bg-slate-800/90 border border-slate-700 rounded-lg px-3 py-2 text-slate-200 text-xs focus:border-indigo-500 outline-hidden transition cursor-pointer">
+            <option value="original">Original (កម្រិតច្បាស់ដើម - Fast Copy គ្មានការបាត់បង់គុណភាព)</option>
+            <option value="high" selected>1080p Full HD (កម្រិតច្បាស់ខ្ពស់ + សំឡេង 320kbps High Bitrate)</option>
+            <option value="720p">720p HD (ទំហំស្រាល ល្អសម្រាប់ចែករំលែកសន្សំទំហំ)</option>
+            <option value="4k">4K Ultra HD (កម្រិតច្បាស់កម្រិតខ្ពស់បំផុត 2160p)</option>
+          </select>
+        </div>
+
+        <!-- Status message / Progress banner -->
+        <div id="export-modal-status" class="hidden p-2.5 rounded-lg text-xs bg-slate-800/90 border border-slate-700 text-slate-300 flex items-center gap-2">
+          <i data-lucide="loader-2" class="w-4 h-4 animate-spin text-emerald-400 shrink-0"></i>
+          <span id="export-modal-status-text">កំពុងដំណើរការ Export វីដេអូ...</span>
+        </div>
+      </div>
+
+      <!-- Modal Footer -->
+      <div class="flex items-center justify-end gap-2 pt-3 border-t border-slate-800">
+        <button type="button" onclick="closeExportModal()"
+          class="px-3.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 font-medium transition cursor-pointer">
+          បោះបង់ (Cancel)
+        </button>
+        <button type="button" id="btn-confirm-export" onclick="confirmExportVideo()"
+          class="px-4 py-1.5 rounded-lg bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-medium shadow-md transition active:scale-95 flex items-center gap-1.5 cursor-pointer">
+          <i id="confirm-export-icon" data-lucide="download" class="w-3.5 h-3.5"></i>
+          <span id="confirm-export-text">Export & Download</span>
+        </button>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Data History Modal -->
+  <div id="data-history-modal" onclick="if (event.target === this) closeHistoryModal()"
+    class="fixed inset-0 bg-black/75 backdrop-blur-xs hidden items-center justify-center z-50 p-4">
+    <div class="bg-[#111728] border border-slate-700/80 rounded-2xl w-full max-w-3xl p-5 shadow-2xl text-xs space-y-4 max-h-[90vh] flex flex-col">
+      
+      <!-- Modal Header -->
+      <div class="flex items-center justify-between border-b border-slate-800 pb-3 shrink-0">
+        <div class="flex items-center gap-2.5">
+          <div class="p-2 bg-indigo-500/10 border border-indigo-500/30 rounded-lg text-indigo-400">
+            <i data-lucide="history" class="w-4 h-4"></i>
+          </div>
+          <div>
+            <div class="flex items-center gap-2">
+              <h3 class="text-sm font-semibold text-white">ប្រវត្តិវីដេអូ Dubbed (Data History)</h3>
+              <span id="history-header-count" class="text-[11px] px-2 py-0.5 rounded-full bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 font-mono font-semibold">0 វីដេអូ</span>
+            </div>
+            <p id="history-header-stats" class="text-[11px] text-slate-400 mt-0.5">គ្រប់គ្រង ទាញយក (Download) ឬលុបវីដេអូដែលបាន Render & Export កន្លងមក</p>
+          </div>
+        </div>
+        <div class="flex items-center gap-2">
+          <button type="button" id="btn-clear-all-history" onclick="clearAllHistoryData()"
+            class="px-2.5 py-1.5 text-[11px] font-medium text-rose-300 hover:text-white bg-rose-950/40 hover:bg-rose-900/60 border border-rose-800/50 rounded-lg flex items-center gap-1.5 transition cursor-pointer active:scale-95"
+            title="លុបប្រវត្តិ និងឯកសារវីដេអូទាំងអស់ចេញពី Disk">
+            <i data-lucide="trash-2" class="w-3.5 h-3.5 text-rose-400"></i>
+            <span>Clear All Data</span>
+          </button>
+          <button onclick="closeHistoryModal()" class="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition cursor-pointer">
+            <i data-lucide="x" class="w-4 h-4"></i>
+          </button>
+        </div>
+      </div>
+
+      <!-- Preview Player Drawer (Shows when an item's preview is clicked) -->
+      <div id="history-preview-drawer" class="hidden shrink-0 bg-black/90 rounded-xl p-3 border border-indigo-500/30 space-y-2">
+        <div class="flex items-center justify-between">
+          <span id="history-preview-title" class="text-xs font-mono font-medium text-slate-200 truncate">Preview Video</span>
+          <button onclick="closeHistoryPreview()" class="text-slate-400 hover:text-white p-0.5 rounded hover:bg-slate-800">
+            <i data-lucide="x" class="w-3.5 h-3.5"></i>
+          </button>
+        </div>
+        <video id="history-preview-video" controls class="w-full max-h-56 rounded-lg bg-black object-contain"></video>
+      </div>
+
+      <!-- Scrollable History Items Container -->
+      <div id="history-items-container" class="flex-1 overflow-y-auto space-y-2 pr-1 min-h-[200px] max-h-[460px]">
+        <!-- Dynamic items rendered by JS -->
+      </div>
+
+      <!-- Empty State Banner -->
+      <div id="history-empty-banner" class="hidden py-12 flex flex-col items-center justify-center text-center space-y-2 text-slate-400">
+        <div class="p-3 rounded-full bg-slate-800/80 border border-slate-700 text-slate-500">
+          <i data-lucide="inbox" class="w-8 h-8"></i>
+        </div>
+        <div class="text-xs font-medium text-slate-300">មិនទាន់មានប្រវត្តិវីដេអូនៅឡើយទេ</div>
+        <div class="text-[11px] text-slate-500 max-w-sm">នៅពេលលោកអ្នកចុច Generate Video ឬ Export Video វីដេអូដែលបានបង្កើតនឹងបង្ហាញនៅទីនេះដោយស្វ័យប្រវត្តិ។</div>
+      </div>
+
+      <!-- Modal Footer -->
+      <div class="flex items-center justify-between pt-3 border-t border-slate-800 shrink-0">
+        <div class="flex items-center gap-2 text-slate-400 text-[11px]">
+          <span id="history-footer-size" class="font-mono">ទំហំសរុប៖ 0 MB</span>
+        </div>
+        <div class="flex items-center gap-2">
+          <button type="button" onclick="loadAndRenderHistory(true)"
+            class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 font-medium transition cursor-pointer flex items-center gap-1.5"
+            title="Refresh list">
+            <i data-lucide="refresh-cw" class="w-3 h-3 text-slate-400"></i>
+            <span>Refresh</span>
+          </button>
+          <button type="button" onclick="closeHistoryModal()"
+            class="px-4 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-medium transition cursor-pointer">
+            បិទ (Close)
+          </button>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Character Voice Library Modal (RVC Voice Cloning) -->
+  <div id="voice-library-modal" onclick="if (event.target === this) closeVoiceLibraryModal()"
+    class="fixed inset-0 bg-black/75 backdrop-blur-xs hidden items-center justify-center z-50 p-4">
+    <div class="bg-[#111728] border border-slate-700/80 rounded-2xl w-full max-w-2xl p-5 shadow-2xl text-xs space-y-4 max-h-[92vh] overflow-y-auto">
+      
+      <!-- Modal Header -->
+      <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+        <div class="flex items-center gap-2">
+          <div class="p-1.5 bg-purple-500/10 border border-purple-500/30 rounded-lg text-purple-400">
+            <i data-lucide="mic-2" class="w-4 h-4"></i>
+          </div>
+          <div>
+            <h3 class="text-sm font-semibold text-white">Character Voice Library (ចម្លងសំឡេងតួអង្គ RVC)</h3>
+            <p class="text-[11px] text-slate-400">គ្រប់គ្រង និង Upload សំឡេងតួអង្គ (.pth / .index) សម្រាប់បញ្ចូលសំឡេងស្វ័យប្រវត្តិ</p>
+          </div>
+        </div>
+        <button onclick="closeVoiceLibraryModal()" class="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition">
+          <i data-lucide="x" class="w-4 h-4"></i>
+        </button>
+      </div>
+
+      <!-- Add New Character Box -->
+      <div class="bg-[#0b0f1a] border border-purple-900/40 rounded-xl p-4 space-y-3">
+        <div class="flex items-center justify-between">
+          <span class="font-semibold text-purple-300 text-xs flex items-center gap-1.5">
+            <i data-lucide="plus-circle" class="w-3.5 h-3.5 text-purple-400"></i>
+            <span>Upload សំឡេងតួអង្គថ្មី (Add Character Voice)</span>
+          </span>
+          <span class="text-[10px] text-slate-500">គាំទ្រ Model ពី Weights.gg / HuggingFace</span>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div>
+            <label class="block text-slate-400 text-[11px] mb-1">ឈ្មោះតួអង្គ (Character Name) *</label>
+            <input type="text" id="rvc-input-name" placeholder="ឧ. Iron Man, តួឯកប្រុស..."
+              class="w-full bg-slate-800 border border-slate-700 rounded-lg px-2.5 py-1.5 text-slate-200 text-xs focus:border-purple-500 outline-hidden">
+          </div>
+          <div>
+            <label class="block text-slate-400 text-[11px] mb-1">ភេទគ្រឹះ (Base Gender) *</label>
+            <select id="rvc-input-gender" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-2.5 py-1.5 text-slate-200 text-xs focus:border-purple-500 outline-hidden">
+              <option value="Male">👨 ប្រុស (Male - Piseth Base)</option>
+              <option value="Female">👩 ស្រី (Female - Sreymom Base)</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-slate-400 text-[11px] mb-1">Pitch Shift (-12 ទៅ +12): <span id="rvc-pitch-val" class="font-mono text-purple-400 font-bold">0</span></label>
+            <input type="range" id="rvc-input-pitch" min="-12" max="12" step="1" value="0" oninput="document.getElementById('rvc-pitch-val').innerText = this.value"
+              class="w-full accent-purple-500 h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer mt-1">
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+          <div class="border border-dashed border-slate-700 hover:border-purple-500/60 rounded-lg p-3 text-center bg-slate-900/60 transition cursor-pointer"
+               onclick="document.getElementById('rvc-file-pth').click()">
+            <input type="file" id="rvc-file-pth" accept=".pth" class="hidden" onchange="window.updateRvcPthLabel(this)">
+            <i data-lucide="file-up" class="w-4 h-4 mx-auto text-purple-400 mb-1"></i>
+            <span id="rvc-pth-label" class="text-[11px] font-medium text-slate-300 block truncate">ជ្រើសរើស File Model (.pth) *</span>
+            <span class="text-[9.5px] text-slate-500">ទំហំគំរូ 40MB - 80MB</span>
+          </div>
+
+          <div class="border border-dashed border-slate-700 hover:border-indigo-500/60 rounded-lg p-3 text-center bg-slate-900/60 transition cursor-pointer"
+               onclick="document.getElementById('rvc-file-index').click()">
+            <input type="file" id="rvc-file-index" accept=".index" class="hidden" onchange="window.updateRvcIndexLabel(this)">
+            <i data-lucide="file-check" class="w-4 h-4 mx-auto text-indigo-400 mb-1"></i>
+            <span id="rvc-index-label" class="text-[11px] font-medium text-slate-400 block truncate">ជ្រើសរើស File Index (.index - ជម្រើសបន្ថែម)</span>
+            <span class="text-[9.5px] text-slate-500">Optional ជួយឱ្យសំឡេងដូចដើម 100%</span>
+          </div>
+        </div>
+
+        <div class="flex items-center justify-between pt-1">
+          <span id="rvc-upload-status" class="text-[11px] text-slate-400 font-medium"></span>
+          <button id="btn-save-rvc-model" onclick="window.uploadRvcModel()"
+            class="px-4 py-1.5 rounded-lg bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-semibold flex items-center gap-1.5 transition active:scale-95 cursor-pointer">
+            <i data-lucide="save" class="w-3.5 h-3.5"></i>
+            <span>Save to Library</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Installed Voices List Header -->
+      <div class="flex items-center justify-between pt-1">
+        <span class="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
+          <i data-lucide="library" class="w-3.5 h-3.5 text-indigo-400"></i>
+          <span>បញ្ជីសំឡេងតួអង្គក្នុងម៉ាស៊ីន (Installed Voices)</span>
+        </span>
+        <button onclick="window.loadRvcModels()" class="text-slate-400 hover:text-white text-[11px] flex items-center gap-1 cursor-pointer">
+          <i data-lucide="refresh-cw" class="w-3 h-3"></i>
+          <span>Refresh</span>
+        </button>
+      </div>
+
+      <!-- Voices Grid / Empty State -->
+      <div id="rvc-models-list" class="space-y-2 max-h-[260px] overflow-y-auto pr-1">
+        <!-- Dynamically rendered -->
+      </div>
+
+      <!-- Modal Footer -->
+      <div class="flex justify-end pt-3 border-t border-slate-800">
+        <button type="button" onclick="closeVoiceLibraryModal()"
+          class="px-4 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 font-medium transition cursor-pointer">
+          បិទ (Close)
+        </button>
+      </div>
+
+    </div>
+  </div>
+
   <!-- Main ES Module Script -->
   <script type="module" src="/js/main.js"></script>
+
+  <!-- Immediate Lucide Icon Render Fallback -->
+  <script>
+    if (window.lucide && typeof window.lucide.createIcons === 'function') {
+      window.lucide.createIcons();
+    }
+  </script>
 </body>
 
 </html>

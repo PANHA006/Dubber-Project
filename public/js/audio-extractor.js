@@ -99,14 +99,14 @@ export function monoFloat32ToWavBlob(float32Samples, sampleRate = 16000) {
 }
 
 /**
- * Extract audio from video and intelligently chunk it if duration exceeds 10.5 minutes (630s).
- * Uses Smart Silence Detection in window [09:30 - 10:30] from chunk start.
+ * Extract full audio from video in a single high-performance pass (16kHz Mono WAV).
+ * Designed for Faster-Whisper, eliminating browser slicing and chunking.
  * 
  * @param {File} videoFile 
  * @param {Function} [onProgress] 
- * @returns {Promise<Array<{blob: Blob, startTime: number, endTime: number, index: number, total: number}>>}
+ * @returns {Promise<Blob>} WAV Blob (16kHz, Mono, 16-bit PCM)
  */
-export async function extractAudioChunksFromVideo(videoFile, onProgress = () => {}) {
+export async function extractAudioFromVideo(videoFile, onProgress = () => {}) {
   logToTerminal('AUDIO:ENGINE', `Extracting audio from "${videoFile.name}" (${(videoFile.size / (1024 * 1024)).toFixed(2)} MB)...`);
   onProgress('កំពុងអានទិន្នន័យវីដេអូ (Reading video file)...');
   const arrayBuffer = await videoFile.arrayBuffer();
@@ -142,80 +142,24 @@ export async function extractAudioChunksFromVideo(videoFile, onProgress = () => 
   const renderedBuffer = await offlineCtx.startRendering();
   const channelData = renderedBuffer.getChannelData(0);
 
-  // Single chunk if <= 10.5 minutes (630 seconds)
-  const MAX_SINGLE_CHUNK_SEC = 630;
-  if (duration <= MAX_SINGLE_CHUNK_SEC) {
-    onProgress('កំពុងបង្កើតឯកសារ WAV (Encoding WAV)...');
-    const wavBlob = monoFloat32ToWavBlob(channelData, targetSampleRate);
-    logToTerminal('AUDIO:ENGINE', `Audio <= 10.5m. Generated 1 single WAV chunk (${(wavBlob.size / (1024 * 1024)).toFixed(2)} MB)`);
-    return [{
-      blob: wavBlob,
-      startTime: 0,
-      endTime: duration,
-      index: 0,
-      total: 1
-    }];
-  }
+  onProgress('កំពុងបង្កើតឯកសារ WAV (Encoding 16kHz WAV)...');
+  const wavBlob = monoFloat32ToWavBlob(channelData, targetSampleRate);
+  logToTerminal('AUDIO:ENGINE', `Full audio extracted in single pass: ${(wavBlob.size / (1024 * 1024)).toFixed(2)} MB (${duration.toFixed(1)}s)`);
 
-  // Multi-chunk with Smart Silence Detection in window [09:30 - 10:30]
-  logToTerminal('AUDIO:ENGINE', `Video > 10.5m. Initiating Smart Silence Auto-Chunking (09:30 - 10:30 window)...`);
-  onProgress('🔍 កំពុងស្កេនរកចន្លោះស្ងាត់ (09:30 - 10:30) និងបំបែកជាកង់ៗ (Smart Silence Auto-Chunking)...');
-  const chunks = [];
-  let currentStart = 0;
-
-  while (currentStart < duration) {
-    const remaining = duration - currentStart;
-    
-    // If remaining audio is within 10.5 minutes, make it the final chunk
-    if (remaining <= MAX_SINGLE_CHUNK_SEC) {
-      const startIdx = Math.floor(currentStart * targetSampleRate);
-      const endIdx = channelData.length;
-      const slice = channelData.subarray(startIdx, endIdx);
-      const blob = monoFloat32ToWavBlob(slice, targetSampleRate);
-      chunks.push({
-        blob,
-        startTime: currentStart,
-        endTime: duration,
-        index: chunks.length
-      });
-      logToTerminal('AUDIO:ENGINE', `Final Chunk ${chunks.length}: [${currentStart.toFixed(1)}s - ${duration.toFixed(1)}s] (${(blob.size / (1024 * 1024)).toFixed(2)} MB)`);
-      break;
-    }
-
-    // Search window: 09:30 (570s) to 10:30 (630s) relative to currentStart
-    const minSearch = currentStart + 570;
-    const maxSearch = Math.min(duration, currentStart + 630);
-    const splitTime = findLowestRmsPoint(channelData, targetSampleRate, minSearch, maxSearch);
-
-    const startIdx = Math.floor(currentStart * targetSampleRate);
-    const endIdx = Math.floor(splitTime * targetSampleRate);
-    const slice = channelData.subarray(startIdx, endIdx);
-    const blob = monoFloat32ToWavBlob(slice, targetSampleRate);
-
-    chunks.push({
-      blob,
-      startTime: currentStart,
-      endTime: splitTime,
-      index: chunks.length
-    });
-
-    logToTerminal('AUDIO:ENGINE', `Created Chunk ${chunks.length}: [${currentStart.toFixed(1)}s - ${splitTime.toFixed(1)}s] (${(blob.size / (1024 * 1024)).toFixed(2)} MB) (Silence dip at ${splitTime.toFixed(1)}s)`);
-
-    currentStart = splitTime;
-  }
-
-  // Set total count
-  const total = chunks.length;
-  chunks.forEach(c => c.total = total);
-  logToTerminal('AUDIO:ENGINE', `Auto-chunking completed: ${total} chunks generated successfully`);
-
-  return chunks;
+  return wavBlob;
 }
 
 /**
- * Backward-compatible single audio extract function
+ * Backward-compatible helper for legacy chunk consumers
  */
-export async function extractAudioFromVideo(videoFile, onProgress = () => {}) {
-  const chunks = await extractAudioChunksFromVideo(videoFile, onProgress);
-  return chunks[0].blob;
+export async function extractAudioChunksFromVideo(videoFile, onProgress = () => {}) {
+  const blob = await extractAudioFromVideo(videoFile, onProgress);
+  return [{
+    blob,
+    startTime: 0,
+    endTime: 0,
+    index: 0,
+    total: 1
+  }];
 }
+

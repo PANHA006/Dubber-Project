@@ -79,7 +79,7 @@ export function renderTimelineTracks() {
 
     // Track T1 block (Subtitles)
     const tBlock = document.createElement('div');
-    tBlock.className = `absolute h-7 rounded-md flex items-center px-2 text-[11px] font-khmer truncate cursor-pointer transition shadow-sm select-none ${
+    tBlock.className = `absolute h-5.5 rounded flex items-center px-1.5 text-[10px] font-khmer truncate cursor-pointer transition shadow-sm select-none ${
       sub.selected
         ? 'bg-indigo-600/90 text-white border border-indigo-300 ring-1 ring-indigo-400'
         : 'bg-indigo-950/70 border border-indigo-500/40 text-indigo-200 hover:bg-indigo-900/80'
@@ -102,7 +102,7 @@ export function renderTimelineTracks() {
 
     // Track A1 block (Audio Dub Waveform)
     const aBlock = document.createElement('div');
-    aBlock.className = `absolute h-7 rounded-md flex items-center px-2 text-[10px] text-violet-200 overflow-hidden cursor-pointer ${
+    aBlock.className = `absolute h-5.5 rounded flex items-center px-1.5 text-[9px] text-violet-200 overflow-hidden cursor-pointer ${
       sub.status === 'Ready'
         ? 'bg-violet-950/70 border border-violet-500/50'
         : 'bg-slate-900/60 border border-slate-700/40 opacity-50'
@@ -114,13 +114,13 @@ export function renderTimelineTracks() {
     // SVG / CSS Simulated Waveform Bars
     aBlock.innerHTML = `
       <div class="flex items-center gap-0.5 w-full opacity-80 pointer-events-none">
-        <span class="h-2.5 w-1 bg-violet-400 rounded-full"></span>
-        <span class="h-4 w-1 bg-violet-300 rounded-full"></span>
-        <span class="h-2 w-1 bg-violet-400 rounded-full"></span>
-        <span class="h-5 w-1 bg-violet-300 rounded-full"></span>
-        <span class="h-3 w-1 bg-violet-400 rounded-full"></span>
-        <span class="h-4.5 w-1 bg-violet-300 rounded-full"></span>
-        <span class="h-2 w-1 bg-violet-400 rounded-full"></span>
+        <span class="h-2 w-0.5 bg-violet-400 rounded-full"></span>
+        <span class="h-3 w-0.5 bg-violet-300 rounded-full"></span>
+        <span class="h-1.5 w-0.5 bg-violet-400 rounded-full"></span>
+        <span class="h-3.5 w-0.5 bg-violet-300 rounded-full"></span>
+        <span class="h-2 w-0.5 bg-violet-400 rounded-full"></span>
+        <span class="h-3 w-0.5 bg-violet-300 rounded-full"></span>
+        <span class="h-1.5 w-0.5 bg-violet-400 rounded-full"></span>
       </div>
     `;
     trackA1.appendChild(aBlock);
