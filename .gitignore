@@ -75,6 +75,7 @@ Thumbs.db
 desktop.ini
 
 # IDE, Editor & Workspace settings
+.workbuddy-ai/
 .vscode/
 !.vscode/extensions.json
 !.vscode/settings.json.example
