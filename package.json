@@ -6,10 +6,16 @@
   "scripts": {
     "start": "node src/server.js",
     "dev": "nodemon",
-    "dev:all": "npx concurrently -k -i \"npm run dev\" \"npm run watch:css\"",
+    "dev:all": "npx concurrently -k -i --hide 1 \"npm run dev\" \"npm run watch:css\"",
     "build:css": "npx @tailwindcss/cli -i ./public/css/input.css -o ./public/css/output.css --minify",
     "watch:css": "npx @tailwindcss/cli -i ./public/css/input.css -o ./public/css/output.css --watch",
-    "test": "node tests/e2e-api.test.js"
+    "test": "node tests/e2e-api.test.js",
+    "test:whisper": "node tests/live-transcribe-api.test.js",
+    "test:translate": "node tests/translation-api.test.js",
+    "test:pipeline": "node tests/full-pipeline.test.js",
+    "test:ui": "node tests/ui-layout-verify.test.js",
+    "test:regression": "node tests/regression-body-limit.test.js",
+    "test:all": "node tests/e2e-api.test.js && node tests/regression-body-limit.test.js"
   },
   "keywords": [
     "dubber",

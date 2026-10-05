@@ -1,30 +1,112 @@
+# =====================================================================
+# 🎙️ Dubber Project - Git Ignore Configuration
+# =====================================================================
+
 # Dependencies
 node_modules/
-package-lock.json
+package-lock.json.bak
 
-# Environment variables
+# Python Virtual Environments, Distributions & Caches
+.venv/
+venv/
+env/
+ENV/
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+*.egg-info/
+dist/
+build/
+eggs/
+.eggs/
+parts/
+var/
+sdist/
+develop-eggs/
+.installed.cfg
+*.egg
+
+# Environment variables and sensitive secrets
 .env
 .env.local
 .env.*.local
+.env.development.local
+.env.test.local
+.env.production.local
+!.env.example
 
-# Logs
+# Runtime key manager state (Auto-generated quota & lockout cache)
+.key-status.json
+.key-status.json.*
+
+# Logs & debugging outputs
 logs/
 *.log
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+pnpm-debug.log*
+coverage/
+.nyc_output/
 
-# Build outputs & temporary files
+# Build outputs & Temporary scratch directories
 dist/
+build/
 tmp/
-.key-status.json
+temp/
+.temp/
+output/
+scratch/
+*.tmp
+*.bak
+*.swp
+*~
 
-# OS Files
+# Operating System & File System Artifacts
 .DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
 Thumbs.db
+desktop.ini
 
-# IDE & Editor files
+# IDE, Editor & Workspace settings
 .vscode/
+!.vscode/extensions.json
+!.vscode/settings.json.example
 .idea/
 *.sublime-project
 *.sublime-workspace
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Storage & Runtime Media
+# Ignore all runtime generated media, videos, voices, exports, and history,
+# while preserving the directory skeleton through .gitkeep files.
+storage/**
+!storage/**/
+!storage/**/.gitkeep
+
+# Test artifacts and generated audio/video files
+tests/*.wav
+tests/*.mp3
+tests/*.mp4
+tests/*.aac
+tests/*.m4a
+tests/*.mkv
+tests/*.webm
+tests/*.srt
+tests/*.vtt
+tests/fixtures/*.wav
+tests/fixtures/*.mp3
+tests/fixtures/*.mp4
+tests/fixtures/*.srt
+tests/fixtures/*.vtt
+
