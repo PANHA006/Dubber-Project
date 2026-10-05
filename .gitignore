@@ -35,6 +35,10 @@ develop-eggs/
 .env.development.local
 .env.test.local
 .env.production.local
+# Backups of .env made before edits (contain live keys — never commit)
+.env.backup*
+.env.bak*
+.env.old
 !.env.example
 
 # Runtime key manager state (Auto-generated quota & lockout cache)

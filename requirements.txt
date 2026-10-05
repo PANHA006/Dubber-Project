@@ -1,0 +1,25 @@
+# Dubber Project — Python worker dependencies
+#
+# These packages power the offline speech-to-text and text-to-speech workers
+# under src/workers/. Install them into a project-local virtualenv:
+#
+#   python -m venv .venv
+#   .venv\Scripts\pip install -r requirements.txt      (Windows)
+#   source .venv/bin/activate && pip install -r requirements.txt   (Linux/macOS)
+#
+# The Node app auto-detects ./.venv, so no PYTHON_PATH is required.
+
+# Offline speech-to-text (Faster-Whisper + CTranslate2 inference)
+faster-whisper==1.2.1
+
+# PyAV is a transitive dependency of faster-whisper. Pin below 19 because
+# faster_whisper/audio.py still calls av.open(metadata_errors="ignore"),
+# which was removed in av 19. Installing av>=19 breaks transcription with:
+#   TypeError: open() got an unexpected keyword argument 'metadata_errors'
+av==18.1.0
+
+# Khmer neural text-to-speech (Microsoft Edge voices)
+edge-tts==7.2.8
+
+# Bundled FFmpeg binary used by the Python workers
+imageio-ffmpeg==0.6.0
