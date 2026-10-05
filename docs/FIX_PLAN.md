@@ -6,6 +6,20 @@
 
 ---
 
+## 🏁 ស្ថានភាពអនុវត្ត — បញ្ចប់ទាំង ៣ ដំណាក់កាល ✅
+
+| ដំណាក់កាល | ស្ថានភាព | Commits |
+|---|---|---|
+| **Phase 1 — Git Hygiene** | ✅ បញ្ចប់ | `501ca46`, `c290a2d`, `04da71f`, `958f729`, `fd3c6ce`, `7aee3d1`, `de996dd` |
+| **Phase 2 — Doc Drift** | ✅ បញ្ចប់ | `e8ddb0f` |
+| **Phase 3 — Security & Robustness** | ✅ បញ្ចប់ | `485da18`, `993524d` |
+
+**លទ្ធផល:** Working tree ស្អាតទាំងស្រុង • Test suite 33 e2e + 6 regression PASS ✅ • Server healthy ✅
+
+**ការរកឃើញបន្ថែមក្រោយស្កេន:** `.env` មិនដែល commit (safe)၊ `storage/**/.gitkeep` មានរួចហើយ ៧ ឯកសារ, Gemini model drift (`Flash 2.5` → `gemini-3.5-flash-lite`), និង 5 hardcoded paths ក្នុង `scripts/translate_khmer_subtitles.js`។
+
+---
+
 ## 📊 ការវាយតម្លៃស្ថានភាពជាក់ស្តែង (Verified Facts)
 
 | ចំណុច | ស្ថានភាពពិត | កម្រិតគ្រោះថ្នាក់ |
