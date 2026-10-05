@@ -10,7 +10,7 @@
 flowchart TD
     A["🎬 វីដេអូដើម (Input Video)"] --> B["⚙️ ជំហាន ១: ទាញយកសំឡេង<br/><b>FFmpeg</b> (WAV 16kHz Mono)"]
     B --> C["📝 ជំហាន ២: បំប្លែងជាអក្សរ<br/><b>Faster-Whisper (Offline)</b><br/>(Text + Timestamps)"]
-    C --> D["🌐 ជំហាន ៣: បកប្រែជាភាសាខ្មែរ<br/><b>Gemini Flash 2.5</b><br/>(2-Step Translation with Multi-Key Pool)"]
+    C --> D["🌐 ជំហាន ៣: បកប្រែជាភាសាខ្មែរ<br/><b>Google Gemini Flash</b><br/>(2-Step Translation with Multi-Key Pool)"]
     D --> E["🖥️ <b>Web UI Interactive Data Table</b><br/><i>(អ្នកប្រើប្រាស់ពិនិត្យ & កែសម្រួលដោយផ្ទាល់)</i>"]
     
     E -->|ទិន្នន័យត្រឹមត្រូវ 100%| F["🗣️ ជំហាន ៤: បង្កើតសំឡេង AI<br/><b>Microsoft Edge TTS</b> (Khmer Voices)"]
@@ -34,7 +34,7 @@ flowchart TD
             │  └──► បច្ចេកវិទ្យា: Faster-Whisper Offline Worker (Speech-to-Text + Word Timestamps)
             ▼
 [ ជំហាន ៣: បកប្រែភាសា (2-Step Cinema Translation) ]
-            │  └──► បច្ចេកវិទ្យា: Google Gemini Flash 2.5 (EN Context -> Spoken Cinema Khmer)
+            │  └──► បច្ចេកវិទ្យា: Google Gemini Flash (EN Context -> Spoken Cinema Khmer)
             │  └──► ប្រព័ន្ធ Multi-Key Failover Pool (Auto-rotation, Cooldown & Lockout)
             ▼
 ┌─────────────────────────────────────────────────────────────┐
@@ -98,7 +98,7 @@ flowchart TD
 ---
 
 ### ជំហាន ៣៖ បកប្រែជាភាសាខ្មែរ (2-Step Cinema Translation)
-- **បច្ចេកវិទ្យា:** `Google Gemini Flash 2.5` ជាមួយ **Multi-Key Failover Pool**
+- **បច្ចេកវិទ្យា:** `Google Gemini Flash` (`GEMINI_TRANSLATION_MODEL`, លំនាំដើម `gemini-3.5-flash-lite`) ជាមួយ **Multi-Key Failover Pool**
 - **គោលបំណង:** បកប្រែ ២ ដំណាក់កាល (Chinese/Source -> Intermediate English Context -> Natural Spoken Cinema Khmer) ដោយធានាឃ្លាសន្ទនារលូនបែបបញ្ចូលសំឡេងរឿង និងបង្វិល API Key ដោយស្វ័យប្រវត្តិនៅពេលប៉ះ Quota Limit (429/ResourceExhausted)។
 - **ទិន្នន័យចេញ (Output JSON Example):**
   ```json
@@ -169,6 +169,6 @@ flowchart TD
 
 1. **ការបំបែកការងារច្បាស់លាស់ (Decoupled Services):** Node.js/Express ទទួលខុសត្រូវលើ API, State Management, និង Web UI ចំណែក Python Worker ទទួលខុសត្រូវលើ Offline AI Inference (Faster-Whisper និង Edge-TTS)។
 2. **Offline-First Transcription:** ប្រើ Faster-Whisper ដោយផ្ទាល់លើ GPU/CPU Local មិនចាំបាច់ផ្ញើសំឡេងទំហំធំទៅ Cloud API និងមិនបារម្ភរឿងអស់ Quota។
-3. **Resilient AI Translation:** Google Gemini Flash 2.5 ដំណើរការជាមួយ Key Manager Failover Pool ដែលបង្វិល Key ស្វ័យប្រវត្តិពេលជួប Rate Limit ឬ Quota Lockout។
+3. **Resilient AI Translation:** Google Gemini Flash ដំណើរការជាមួយ Key Manager Failover Pool ដែលបង្វិល Key ស្វ័យប្រវត្តិពេលជួប Rate Limit ឬ Quota Lockout។
 4. **ល្បឿនលឿន និងគុណភាពសំឡេងខ្ពស់:** `atempo` និង Audio Filters របស់ FFmpeg ដំណើរការ Time-stretching បានល្អឥតខ្ចោះ មិនធ្វើឱ្យសំឡេងស្រួច (No chipmunk effect)។
 5. **Storage Architecture ស្តង់ដារ:** រក្សាទុកឯកសារតាម Folder ច្បាស់លាស់ក្នុង `storage/` (`storage/temp/`, `storage/voices/`, `storage/videos/`, `storage/exports/`, `storage/projects/`)។

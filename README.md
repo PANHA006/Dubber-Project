@@ -7,13 +7,34 @@
 ## 🌟 លក្ខណៈពិសេសសំខាន់ៗ (Key Features)
 
 - 🎙️ **Speech-to-Text លើម៉ាស៊ីនផ្ទាល់ (Offline Whisper):** ប្រើ Faster-Whisper រួមជាមួយ Voice Activity Detection (VAD) ទាញយក Word Timestamps ច្បាស់លាស់ ដោយមិនចំណាយ Quota API។
-- 🌐 **ការបកប្រែជាភាសាខ្មែរបែបភាពយន្ត (2-Step Cinema Translation):** ប្រើ Google Gemini Flash 2.5 តាមក្បួនបកប្រែ ២ ជំហាន (English Context -> Spoken Cinema Khmer) ដោយជៀសវាងការប្រើពាក្យខុសបែបសៀវភៅ ឬពាក្យ Hallucination។
+- 🌐 **ការបកប្រែជាភាសាខ្មែរបែបភាពយន្ត (2-Step Cinema Translation):** ប្រើ Google Gemini Flash (`GEMINI_TRANSLATION_MODEL`, លំនាំដើម `gemini-3.5-flash-lite`) តាមក្បួនបកប្រែ ២ ជំហាន (EN Context -> Spoken Cinema Khmer) ដោយជៀសវាងការប្រើពាក្យខុសបែបសៀវភៅ ឬពាក្យ Hallucination។
 - 🔑 **ប្រព័ន្ធ Multi-Key Failover Pool:** គ្រប់គ្រង API Keys ច្រើនក្នុងពេលតែមួយ មានមុខងារ Auto-Rotation, Cooldown និងចាក់សោស្វ័យប្រវត្ត 24h នៅពេលអស់ Quota។
 - 🗣️ **សំឡេងខ្មែរ AI ធម្មជាតិ (Edge-TTS Neural Voices):** គាំទ្រសំឡេងខ្មែរ Neural (Piseth & Sreymom) ជាមួយនឹងការកំណត់ Pitch, Speed និង Volume។
 - 🎛️ **Audio Ducking & Auto Speed Fitting:** បន្ថយសំឡេងដើមនៃវីដេអូនៅពេលមានសំឡេងនិយាយ និងតម្រឹមល្បឿនសំឡេង (`atempo`) ឱ្យស៊ីចង្វាក់ជាមួយ Timestamp។
 - 🖥️ **Interactive Subtitle Editor (Human-in-the-Loop):** ផ្ទាំង UI ងាយស្រួលកែសម្រួលអក្សរខ្មែរ និង Timestamp ផ្ទាល់លើ Web Player។
 - 🔄 **Video Preview & Switcher:** ចុចប្តូរមើលរវាង Original Video និង Dubbed Video ភ្លាមៗដោយមិនបាច់ Reload។
 - 💾 **Project Persistence & Auto-Save:** រក្សាទុកស្ថានភាព Subtitles, Key API និង Video ដោយស្វ័យប្រវត្តិ ព្រមទាំងអាច Export/Import ជា JSON បាន។
+
+---
+
+## 🎧 ម៉ាស៊ីនបំប្លែងសំដីទៅជាអក្សរ (Speech-to-Text Providers)
+
+ប្រព័ន្ធគាំទ្រ **ម៉ាស៊ីន STT ចំនួន ៣ ប្រភេទ** ដែលអាចជ្រើសរើសបានផ្ទាល់ពី Dropdown ក្នុង UI។ ការជ្រើសរើសត្រូវបានកំណត់ដោយឈ្មោះ Model៖ បើឈ្មោះចាប់ផ្តើមដោយ `groq-` ប្រព័ន្ធនឹងហៅ Groq, បើ `deepgram-` នឹងហៅ Deepgram, បើផ្សេងពីនេះនឹងហៅ Faster-Whisper ក្នុងម៉ាស៊ីន។
+
+| ប្រភេទ | Model ដែលគាំទ្រ | តម្លៃ | ល្បឿន | តម្រូវការ |
+|---|---|---|---|---|
+| 💻 **Faster-Whisper (Offline)** | `small`, `medium`, `large-v2`, `large-v3` | ឥតគិតថ្លៃ ($0) | អាស្រ័យលើ CPU/GPU | Python `.venv` + `faster-whisper` |
+| ⚡ **Groq Cloud Whisper** | `groq-whisper-large-v3`, `groq-whisper-turbo` | Free Tier | លឿនបំផុត (~2s) | `GROQ_API_KEY` |
+| 🌐 **Deepgram Nova** | `deepgram-nova-3`, `deepgram-nova-2` | បង់ប្រាក់ (មាន Free Credit) | លឿន | `DEEPGRAM_API_KEY` |
+
+> [!NOTE]
+> ឈ្មោះ Model ផ្សេងទៀតដូចជា `gemini-stt` ក៏មាននៅក្នុង UI ដែរ។ ប្រសិនបើមិនបានកំណត់ API Key សម្រាប់ Provider ណាមួយ សូមជ្រើសរើស Faster-Whisper Offline ដែលមិនត្រូវការ Key។
+
+> [!TIP]
+> **ការណែនាំជម្រើស៖** ប្រើ **Groq Whisper Large-v3** សម្រាប់គុណភាព និងល្បឿនល្អបំផុត (ណែនាំសម្រាប់ការងារប្រចាំថ្ងៃ) ឬប្រើ **Faster-Whisper Large-v3** បើចង់ដំណើរការក្រៅបណ្តាញដោយគ្មានការចំណាយ។
+
+### ការកំណត់ API Keys ក្នុង UI
+ចុចប៊ូតុង **កំណត់ API Keys (Groq / Gemini)** នៅក្នុង Dropdown ជ្រើស Model ដើម្បីបញ្ចូល Key ផ្ទាល់ (រក្សាទុកក្នុង Browser ប៉ុណ្ណោះ) ឬកំណត់ក្នុងឯកសារ `.env` សម្រាប់ការប្រើប្រាស់ជាប្រចាំ។
 
 ---
 
@@ -99,10 +120,22 @@ Dubber Project/
 2. **Python:** កំណែ `3.10+` (មានដំឡើង `pip` និង `venv`)។
 3. **FFmpeg & FFprobe:** ត្រូវដំឡើង និងដាក់ក្នុង System `PATH`។
    - ពិនិត្យតាមរយៈ៖ `ffmpeg -version`
-4. **Python Dependencies:** ដំឡើងក្នុង virtual environment (`.venv`)៖
+4. **Python Dependencies:** ដំឡើងក្នុង virtual environment ក្នុងថតគម្រោងផ្ទាល់ (`.venv`) ដើម្បីឱ្យប្រព័ន្ធរកឃើញដោយស្វ័យប្រវត្តិ៖
    ```bash
+   # បង្កើត virtual environment ក្នុងថតគម្រោង
+   python -m venv .venv
+
+   # ធ្វើឱ្យសកម្ម (Windows)
+   .venv\Scripts\activate
+
+   # ធ្វើឱ្យសកម្ម (Linux/macOS)
+   source .venv/bin/activate
+
+   # ដំឡើង Dependencies
    pip install faster-whisper edge-tts imageio-ffmpeg
    ```
+   > [!NOTE]
+   > បើអ្នកប្រើ `.venv` នៅកន្លែងផ្សេង (ឧ. ថតខាងក្រៅគម្រោង) សូមកំណត់ `PYTHON_PATH` ក្នុង `.env` ឱ្យចង្អុលទៅ Interpreter នោះ។
 
 ---
 
@@ -122,7 +155,17 @@ copy .env.example .env
 # លើ PowerShell ឬ Linux/macOS
 cp .env.example .env
 ```
-បន្ទាប់មកបើកឯកសារ `.env` ហើយបញ្ចូល **GEMINI_API_KEY** (អាចដាក់ច្រើន Keys ដោយប្រើសញ្ញាក្បៀស `,`)។
+បន្ទាប់មកបើកឯកសារ `.env` ហើយបំពេញតម្លៃដូចខាងក្រោម៖
+
+| អថេរ | ចាំបាច់? | ចំណាំ |
+|---|---|---|
+| `GEMINI_API_KEY` | ✅ ចាំបាច់ | សម្រាប់ការបកប្រែ (អាចដាក់ច្រើន Keys ដោយប្រើសញ្ញាក្បៀស `,` ឬចុះបន្ទាត់ សម្រាប់ Auto-Failover) |
+| `GROQ_API_KEY` | 🔶 ណែនាំ | បើប្រើ Groq Cloud STT (លឿនបំផុត) |
+| `DEEPGRAM_API_KEY` | ⭕ ស្រេចចិត្ត | បើប្រើ Deepgram Nova STT |
+| `PYTHON_PATH` | ⭕ ស្រេចចិត្ត | ទុកទទេ បើប្រើ `.venv` ក្នុងថតគម្រោង |
+
+> [!IMPORTANT]
+> ប្រសិនបើមិនកំណត់ `GROQ_API_KEY` ឬ `DEEPGRAM_API_KEY` សូមជ្រើសរើស Model **Offline (Faster-Whisper)** នៅក្នុង UI ដើម្បីជៀសវាងកំហុស។
 
 ### ៣. Build Tailwind CSS
 ```bash
@@ -218,10 +261,17 @@ Stop-Process -Id <PID> -Force
 
 ### ⚠️ Faster-Whisper ឬ Python Worker មិនដំណើរការ
 - ពិនិត្យមើលថា `.venv` មានដំឡើង `faster-whisper` និង `edge-tts` រួចរាល់ហើយឬនៅ។
-- អាចកំណត់ផ្លូវ Python ច្បាស់លាស់ក្នុង `.env`៖
+- ប្រព័ន្ធជ្រើសរើស Python Interpreter តាមលំដាប់អាទិភាពដូចខាងក្រោម៖
+  1. `PYTHON_PATH` ក្នុង `.env` (បើឯកសារនោះមានពិតប្រាកដ)
+  2. `.venv` ក្នុងថតគម្រោង (`./.venv/Scripts/python.exe`)
+  3. `python` សកល (Global) នៅក្នុង `PATH`
+- បើចង់កំណត់ផ្លូវ Python ច្បាស់លាស់ សូមបើកបន្ទាត់ `PYTHON_PATH` ក្នុង `.env` ហើយដាក់ផ្លូវទៅកាន់ Interpreter របស់អ្នក (គួរបង្កើត `.venv` នៅក្នុងថតគម្រោងផ្ទាល់ ដើម្បីមិនចាំបាច់កំណត់)៖
   ```env
-  PYTHON_PATH=d:/Desktop/create-dubber-project/.venv/Scripts/python.exe
+  # គំរូសម្រាប់ Windows — សូមជំនួសដោយផ្លូវពិតលើម៉ាស៊ីនរបស់អ្នក
+  PYTHON_PATH=D:\path\to\your\project\.venv\Scripts\python.exe
   ```
+  > [!TIP]
+  > បើទុក `PYTHON_PATH` ទទេ ប្រព័ន្ធនឹងរកឃើញ `.venv` ក្នុងថតគម្រោងដោយស្វ័យប្រវត្តិ។ នេះជាវិធីណែនាំ ព្រោះវាមិនចងភ្ជាប់នឹងម៉ាស៊ីនណាមួយ។
 
 ### ⚠️ FFmpeg រកមិនឃើញ (Command Not Found)
 - ត្រូវប្រាកដថាបានដំឡើង FFmpeg និងដាក់ Folder `bin` ចូលទៅក្នុង System Environment Variable `PATH`។
