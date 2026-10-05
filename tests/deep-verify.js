@@ -1,4 +1,4 @@
-﻿const fs = require('fs');
+const fs = require('fs');
 const path = require('path');
 const { execSync } = require('child_process');
 
@@ -20,6 +20,7 @@ const files = [
   'src/routes/api.routes.js',
   'src/controllers/dubber.controller.js',
   'src/services/gemini.service.js',
+  'src/services/whisper.service.js',
   'src/services/dubber.service.js',
   'src/utils/terminal-logger.js',
   'tests/e2e-api.test.js'
@@ -76,6 +77,7 @@ async function testLiveServer() {
     { path: '/js/video-player.js', method: 'GET', expectStatus: 200 },
     { path: '/css/output.css', method: 'GET', expectStatus: 200 },
     { path: '/api/transcribe', method: 'POST', expectStatus: 400 },
+    { path: '/api/translate', method: 'POST', expectStatus: 400 },
     { path: '/api/terminal-log', method: 'POST', expectStatus: 200, body: JSON.stringify({ category: 'AUDIT', message: 'Live audit ping' }) }
   ];
 

@@ -205,8 +205,11 @@ async function runE2ETests() {
       // --- TEST 9: Gemini 3.6 Flash Model Configuration & Service Integrity ---
       const geminiService = require('../src/services/gemini.service');
       assert(
-        'Gemini Service module is loaded and has transcribeAudio method',
-        typeof geminiService.transcribeAudio === 'function'
+        'Gemini Service module exposes the 2-step translation API',
+        typeof geminiService.translateSubtitles === 'function' &&
+        typeof geminiService.translateChineseToEnglish === 'function' &&
+        typeof geminiService.translateEnglishToKhmer === 'function' &&
+        typeof geminiService.executeWithFailover === 'function'
       );
 
       assert(
@@ -216,14 +219,14 @@ async function runE2ETests() {
 
       const geminiServiceCode = fs.readFileSync(path.join(__dirname, '../src/services/gemini.service.js'), 'utf8');
       assert(
-        'gemini.service.js enforces Acoustic Sentence Boundaries and BGM vocal isolation',
-        geminiServiceCode.includes('Acoustic Sentence Boundaries') &&
-        geminiServiceCode.includes('Foreground Vocal Isolation & BGM Filtering')
+        'gemini.service.js enforces Spoken Cinema Khmer and bans the "ចាស់ៗ" hallucination',
+        geminiServiceCode.includes('NATURAL SPOKEN CINEMA KHMER') &&
+        geminiServiceCode.includes('ABSOLUTE PROHIBITION ON "ចាស់ៗ"')
       );
 
       assert(
-        'gemini.service.js schema defines both originalText and khmerText in One-Pass',
-        geminiServiceCode.includes('originalText:') &&
+        'gemini.service.js returns both englishText and khmerText per line',
+        geminiServiceCode.includes('englishText:') &&
         geminiServiceCode.includes('khmerText:')
       );
 
@@ -235,20 +238,19 @@ async function runE2ETests() {
         subtitlesCode.includes('sub-text-input')
       );
 
-      // --- TEST 10: Smart Silence Auto-Chunking (09:30 - 10:30 Window) Integrity ---
+      // --- TEST 10: Single-Pass Audio Extraction for Faster-Whisper ---
       assert(
-        'audio-extractor.js exports extractAudioChunksFromVideo and findLowestRmsPoint',
-        audioExtractorCode.includes('export function findLowestRmsPoint') &&
-        audioExtractorCode.includes('export async function extractAudioChunksFromVideo') &&
-        audioExtractorCode.includes('minSearch = currentStart + 570') &&
-        audioExtractorCode.includes('maxSearch = Math.min(duration, currentStart + 630)')
+        'audio-extractor.js exports extractAudioFromVideo and monoFloat32ToWavBlob',
+        audioExtractorCode.includes('export async function extractAudioFromVideo') &&
+        audioExtractorCode.includes('export function monoFloat32ToWavBlob') &&
+        audioExtractorCode.includes('OfflineAudioContext')
       );
 
       assert(
-        'main.js imports and orchestrates extractAudioChunksFromVideo with incremental table updates',
-        mainJsCode.includes('extractAudioChunksFromVideo') &&
-        mainJsCode.includes('totalChunks') &&
-        mainJsCode.includes('formatTimecodeSRT')
+        'main.js invokes single-pass extractAudioFromVideo and renders subtitles cleanly',
+        mainJsCode.includes('extractAudioFromVideo') &&
+        mainJsCode.includes('formatTimecodeSRT') &&
+        mainJsCode.includes('/api/transcribe')
       );
 
       // --- TEST 11: Silence Detection Algorithm Mathematical Verification ---
