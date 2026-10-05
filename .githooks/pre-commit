@@ -1,0 +1,105 @@
+#!/bin/sh
+# =====================================================================
+# 🔐 Dubber Project — Pre-commit Secret Scanner
+# =====================================================================
+# Blocks a commit when staged content looks like it contains a live
+# credential (API key, token, private key) or a real .env file.
+#
+# Enable once per clone:
+#   git config core.hooksPath .githooks
+#   (the "npm run setup:hooks" script does this automatically)
+#
+# Bypass in a genuine emergency (NOT recommended):
+#   git commit --no-verify
+# =====================================================================
+
+set -e
+
+RED='\033[0;31m'
+YELLOW='\033[0;33m'
+GREEN='\033[0;32m'
+CYAN='\033[0;36m'
+NC='\033[0m'
+
+fail=0
+# Use a simple relative marker file (mktemp can return Windows paths that
+# plain POSIX tooling cannot clean up on Git Bash / MSYS).
+marker=".git/secret-scan.tmp"
+: > "$marker"
+
+printf "${CYAN}[pre-commit] Scanning staged changes for secrets...${NC}\n"
+
+# ---------------------------------------------------------------------
+# 1. Block direct .env commits (allow .env.example / .env.template).
+# ---------------------------------------------------------------------
+staged_env=$(git diff --cached --name-only --diff-filter=ACM \
+  | grep -E '(^|/)\.env($|\.)' \
+  | grep -vE '\.env\.(example|template|sample)$' || true)
+
+if [ -n "$staged_env" ]; then
+  printf "${RED}x Blocked: a live environment file is staged for commit:${NC}\n"
+  printf '%s\n' "$staged_env" | sed 's/^/    /'
+  printf '  Only .env.example should ever be committed.\n'
+  fail=1
+fi
+
+# ---------------------------------------------------------------------
+# 2. Scan added lines for high-confidence credential patterns.
+# ---------------------------------------------------------------------
+added_lines=$(git diff --cached -U0 --diff-filter=ACM -- . \
+  ':(exclude).githooks/pre-commit' \
+  | grep -E '^\+' \
+  | grep -vE '^\+\+\+' || true)
+
+scan_pattern() {
+  # $1 = extended regex, $2 = human label
+  [ -z "$1" ] && return 0
+  matches=$(printf '%s\n' "$added_lines" | grep -EIn "$1" || true)
+  if [ -n "$matches" ]; then
+    printf "${RED}x Blocked: possible %s detected in staged content${NC}\n" "$2"
+    printf '%s\n' "$matches" | cut -c1-120 | sed 's/^/    /'
+    printf '1\n' >> "$marker"
+  fi
+}
+
+if [ -n "$added_lines" ]; then
+  scan_pattern 'gsk_[A-Za-z0-9]{40,}'                  'Groq API key'
+  scan_pattern 'sk-[A-Za-z0-9]{32,}'                   'OpenAI-style secret key'
+  scan_pattern 'AQ\.[A-Za-z0-9_-]{30,}'                'Google API key'
+  scan_pattern 'AIza[A-Za-z0-9_-]{30,}'                'Google AI Studio key'
+  scan_pattern 'xox[baprs]-[A-Za-z0-9-]{10,}'          'Slack token'
+  scan_pattern 'ghp_[A-Za-z0-9]{30,}'                  'GitHub personal access token'
+  scan_pattern 'github_pat_[A-Za-z0-9_]{30,}'          'GitHub fine-grained token'
+  scan_pattern 'BEGIN [A-Z ]*PRIVATE ' 'private key material'
+
+  # Detect a hard-coded assignment of a long opaque value to a key-like name.
+  kv_matches=$(printf '%s\n' "$added_lines" \
+    | grep -EIn '(API_KEY|APIKEY|SECRET|TOKEN|PASSWORD|PASSWD|CREDENTIAL)[A-Z_]*[=:][[:space:]]*["'"'"']?[A-Za-z0-9_./+=-]{24,}' \
+    | grep -vEi '(example|placeholder|your_|xxx+|<|>|changeme|dummy|fake|redacted|\$\{|\$\(|process\.env|import\.meta\.env)' \
+    || true)
+  if [ -n "$kv_matches" ]; then
+    printf "${RED}x Blocked: possible hard-coded credential assignment${NC}\n"
+    printf '%s\n' "$kv_matches" | cut -c1-120 | sed 's/^/    /'
+    printf '1\n' >> "$marker"
+  fi
+fi
+
+if [ -s "$marker" ]; then
+  fail=1
+fi
+: > "$marker"
+
+# ---------------------------------------------------------------------
+# 3. Result
+# ---------------------------------------------------------------------
+if [ "$fail" -ne 0 ]; then
+  printf '\n'
+  printf "${RED}Commit aborted by the secret scanner.${NC}\n"
+  printf "${YELLOW}If this is a false positive, review the lines above, then:${NC}\n"
+  printf '  - remove the value and load it from .env instead, or\n'
+  printf '  - bypass with: git commit --no-verify\n'
+  exit 1
+fi
+
+printf "${GREEN}[pre-commit] No secrets detected. OK${NC}\n"
+exit 0

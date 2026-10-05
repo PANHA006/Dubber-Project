@@ -7,6 +7,7 @@
     "start": "node src/server.js",
     "dev": "nodemon",
     "dev:all": "npx concurrently -k -i --hide 1 \"npm run dev\" \"npm run watch:css\"",
+    "setup:hooks": "git config core.hooksPath .githooks",
     "build:css": "npx @tailwindcss/cli -i ./public/css/input.css -o ./public/css/output.css --minify",
     "watch:css": "npx @tailwindcss/cli -i ./public/css/input.css -o ./public/css/output.css --watch",
     "test": "node tests/e2e-api.test.js",
