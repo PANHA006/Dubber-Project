@@ -215,7 +215,14 @@ class DeepgramService {
     }));
 
     formatTerminalLog('DEEPGRAM:SUCCESS', `Generated ${finalSubtitles.length} aligned subtitles using Deepgram [${modelName}] in ${elapsed}s`);
-    return finalSubtitles;
+    // Deepgram reports the spoken language under metadata (sometimes per channel).
+    // Normalise to the primary BCP-47 tag (e.g. 'zh-CN' -> 'zh') so the router
+    // can match it against a small set of known languages.
+    const rawLang = json.results?.channels?.[0]?.detected_language
+      || json.metadata?.language
+      || null;
+    const detectedLang = rawLang ? String(rawLang).split(/[-_]/)[0].toLowerCase() : null;
+    return { segments: finalSubtitles, language: detectedLang };
   }
 }
 

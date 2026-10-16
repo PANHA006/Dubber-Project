@@ -33,8 +33,8 @@ assert(indexHtml.includes('onclick="toggleSubtitleFullscreen()"'), 'Fullscreen b
 assert(indexHtml.includes('id="fullscreen-icon"'), 'Fullscreen button has icon with id="fullscreen-icon"');
 assert(indexHtml.includes('data-lucide="maximize-2"'), 'Initial icon is maximize-2');
 assert(indexHtml.includes('id="fullscreen-text"'), 'Fullscreen button has id="fullscreen-text"');
-assert(indexHtml.includes('min-w-[260px]">KHMER TEXT (EDITABLE)'), 'Khmer table header has responsive min-width');
-assert(indexHtml.includes('w-[28%] min-w-[180px]">ORIGINAL TEXT'), 'Original text table header has balanced width');
+assert(indexHtml.includes('min-w-[240px]">KHMER TEXT (EDITABLE)'), 'Khmer table header has responsive min-width');
+assert(indexHtml.includes('w-[24%] min-w-[150px]">ORIGINAL TEXT'), 'Original text table header has balanced width');
 
 // 2. Check public/css/input.css and output.css
 console.log('\n--- 2. Testing Fullscreen CSS Styles ---');

@@ -80,12 +80,16 @@ class DubberController {
       const isDeepgram = typeof model === 'string' && model.startsWith('deepgram');
 
       let subtitles = [];
+      // Source language detected by the STT engine ('zh' | 'en' | 'km' | ...).
+      // Forwarded to the client so the translate step can route directly
+      // (Chinese -> Khmer) instead of always bridging through English.
+      let detectedLanguage = null;
 
       if (isGroq) {
         // Route to Groq Cloud Whisper API (Ultra-Fast 1-2s)
         const groqApiKey = req.body?.groqApiKey || req.body?.apiKey || process.env.GROQ_API_KEY;
         formatTerminalLog('SERVER:ROUTE', `Routing transcription to Groq Cloud API (model: ${model})`);
-        subtitles = await groqService.transcribeAudio(req.file.path, {
+        const groqResult = await groqService.transcribeAudio(req.file.path, {
           model,
           apiKey: groqApiKey,
           originalFilename: req.file.originalname,
@@ -94,6 +98,8 @@ class DubberController {
           maxMergeLimit: req.body?.maxMergeLimit,
           language: req.body?.language || null
         });
+        subtitles = Array.isArray(groqResult) ? groqResult : (groqResult.segments || []);
+        detectedLanguage = Array.isArray(groqResult) ? null : (groqResult.language || null);
 
         formatTerminalLog('SERVER:RESULT', `Successfully processed transcription with Groq Cloud [${model}]`, {
           engine: 'groq',
@@ -104,7 +110,7 @@ class DubberController {
         // Route to Deepgram Commercial Specialist API
         const deepgramApiKey = req.body?.deepgramApiKey || req.body?.apiKey || process.env.DEEPGRAM_API_KEY;
         formatTerminalLog('SERVER:ROUTE', `Routing transcription to Deepgram API (model: ${model})`);
-        subtitles = await deepgramService.transcribeAudio(req.file.path, {
+        const dgResult = await deepgramService.transcribeAudio(req.file.path, {
           model,
           apiKey: deepgramApiKey,
           originalFilename: req.file.originalname,
@@ -113,6 +119,8 @@ class DubberController {
           maxMergeLimit: req.body?.maxMergeLimit,
           language: req.body?.language || null
         });
+        subtitles = Array.isArray(dgResult) ? dgResult : (dgResult.segments || []);
+        detectedLanguage = Array.isArray(dgResult) ? null : (dgResult.language || null);
 
         formatTerminalLog('SERVER:RESULT', `Successfully processed transcription with Deepgram [${model}]`, {
           engine: 'deepgram',
@@ -126,7 +134,7 @@ class DubberController {
         if (localModel === 'whisper' || !localModel) localModel = 'base';
         
         formatTerminalLog('SERVER:ROUTE', `Routing transcription to Faster-Whisper Local Engine (model: ${localModel})`);
-        subtitles = await whisperService.transcribeAudio(req.file.path, {
+        const whisperResult = await whisperService.transcribeAudio(req.file.path, {
           model: localModel,
           vad: req.body?.vad !== '0' && req.body?.vad !== false,
           vadThreshold: req.body?.vadThreshold,
@@ -134,6 +142,8 @@ class DubberController {
           maxMergeLimit: req.body?.maxMergeLimit,
           language: req.body?.language || null
         });
+        subtitles = Array.isArray(whisperResult) ? whisperResult : (whisperResult.segments || []);
+        detectedLanguage = Array.isArray(whisperResult) ? null : (whisperResult.language || null);
 
         formatTerminalLog('SERVER:RESULT', `Successfully processed transcription with Faster-Whisper [${localModel}]`, {
           engine: 'faster-whisper',
@@ -151,6 +161,7 @@ class DubberController {
       res.status(200).json({
         success: true,
         data: subtitles,
+        language: detectedLanguage,
       });
     } catch (error) {
       formatTerminalLog('SERVER:ERROR', `Transcription error: ${error.message}`);
@@ -176,8 +187,11 @@ class DubberController {
         });
       }
 
-      formatTerminalLog('SERVER:TRANSLATE', `Received ${subtitles.length} subtitle lines for Gemini translation (endPadding: ${endPadding ?? 0.70}s)`);
-      const translated = await geminiService.translateSubtitles(subtitles, apiKey || null, { endPadding });
+      formatTerminalLog('SERVER:TRANSLATE', `Received ${subtitles.length} subtitle lines for Gemini translation (endPadding: ${endPadding ?? 0.70}s, sourceLanguage: ${req.body?.sourceLanguage || 'auto'})`);
+      const translated = await geminiService.translateSubtitles(subtitles, apiKey || null, {
+        endPadding,
+        sourceLanguage: req.body?.sourceLanguage || null
+      });
 
       res.status(200).json({
         success: true,

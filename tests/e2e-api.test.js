@@ -218,10 +218,20 @@ async function runE2ETests() {
       );
 
       const geminiServiceCode = fs.readFileSync(path.join(__dirname, '../src/services/gemini.service.js'), 'utf8');
+      // The prompt wording now lives in src/prompts/translation-prompts.js; the
+      // service must delegate to it, so assert the delegation on the service and
+      // the actual Khmer rules on the prompt library.
+      const translationPromptsCode = fs.readFileSync(path.join(__dirname, '../src/prompts/translation-prompts.js'), 'utf8');
       assert(
-        'gemini.service.js enforces Spoken Cinema Khmer and bans the "ចាស់ៗ" hallucination',
-        geminiServiceCode.includes('NATURAL SPOKEN CINEMA KHMER') &&
-        geminiServiceCode.includes('ABSOLUTE PROHIBITION ON "ចាស់ៗ"')
+        'gemini.service.js delegates both steps to the prompt library',
+        geminiServiceCode.includes('buildStep1Prompt(inputLines)') &&
+        geminiServiceCode.includes('buildStep2Prompt(inputLines)')
+      );
+
+      assert(
+        'translation-prompts.js enforces Spoken Cinema Khmer and bans the "ចាស់" hallucination',
+        translationPromptsCode.includes('NATURAL SPOKEN CINEMA KHMER') &&
+        translationPromptsCode.includes('ABSOLUTE PROHIBITION ON "ចាស់" FOR AFFIRMATION')
       );
 
       assert(

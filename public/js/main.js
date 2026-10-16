@@ -180,6 +180,12 @@ window.startTranscription = async function() {
     }
 
     const segments = result.data;
+    // Source language detected by the STT engine. `zh` unlocks the direct
+    // Chinese -> Khmer path on the next Translate click (1 quota, no EN line).
+    state.sourceLanguage = result.language || null;
+    if (state.sourceLanguage) {
+      logToTerminal('CLIENT:LANG', `Detected source language: ${state.sourceLanguage}`);
+    }
     if (Array.isArray(segments) && segments.length > 0) {
       const parsedSubtitles = segments.map((item, segIndex) => {
         const rawStart = item.start || '00:00:00,000';
@@ -264,9 +270,22 @@ export async function startTranslation() {
       btn.setAttribute('disabled', 'true');
       btn.classList.add('opacity-70', 'cursor-wait');
     }
-    if (btnText) btnText.textContent = 'Translating (2 Steps)...';
-    window.showToast('🤖 កំពុងដំណើរការបកប្រែ ២ ជំហាន (2 Quotas): ចិន ➡️ អង់គ្លេស ➡️ ភាសានិយាយប្រែរឿងខ្មែរ...');
-    logToTerminal('CLIENT:TRANSLATE', `Initiating 2-Step Translation Pipeline (2 Quotas) for ${state.subtitles.length} subtitles...`);
+    // Pick the human-readable pipeline label from the detected source language
+    // so the button / toast / log tell the truth about how many quotas are used.
+    const srcLang = String(state.sourceLanguage || '').toLowerCase();
+    const isChineseSource = ['zh', 'zho', 'chi', 'cmn', 'yue'].includes(srcLang.split(/[-_]/)[0]);
+    const pipelineLabel = isChineseSource
+      ? 'Translating (Direct ZH ➡️ KM)...'
+      : 'Translating (2 Steps)...';
+
+    if (btnText) btnText.textContent = pipelineLabel;
+    if (isChineseSource) {
+      window.showToast('🤖 កំពុងបកប្រែផ្ទាល់ពីចិន ➡️ ខ្មែរ (១ Quota): មិនបង្ហាញបន្ទាត់អង់គ្លេស...');
+      logToTerminal('CLIENT:TRANSLATE', `Direct Chinese -> Khmer pipeline (1 Quota) for ${state.subtitles.length} subtitles...`);
+    } else {
+      window.showToast('🤖 កំពុងដំណើរការបកប្រែ ២ ជំហាន (2 Quotas): ដើម ➡️ អង់គ្លេស ➡️ ភាសានិយាយប្រែរឿងខ្មែរ...');
+      logToTerminal('CLIENT:TRANSLATE', `Initiating 2-Step Translation Pipeline (2 Quotas) for ${state.subtitles.length} subtitles...`);
+    }
 
     const response = await fetch('/api/translate', {
       method: 'POST',
@@ -285,7 +304,9 @@ export async function startTranslation() {
           englishText: s.englishText || ''
         })),
         apiKey: state.geminiApiKey || null,
-        endPadding: state.dubbingSettings?.endPadding ?? 0.70
+        endPadding: state.dubbingSettings?.endPadding ?? 0.70,
+        // Lets the backend router choose direct (zh) vs bridged (everything else).
+        sourceLanguage: state.sourceLanguage || null
       })
     });
 

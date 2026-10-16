@@ -5,6 +5,90 @@ const { formatTerminalLog, formatTerminalProgress } = require('../utils/terminal
 const historyService = require('./history.service');
 const pcmMuterService = require('./pcm-muter.service');
 
+/**
+ * Report FFmpeg's own progress while a long render runs.
+ *
+ * FFmpeg is spawned with `-progress pipe:1 -nostats`, which streams
+ * `key=value` lines to stdout every ~0.5s. Without this the final mux is a
+ * black box: it can run for minutes on a long video while the log sits silent
+ * after "Spawning FFmpeg dubbing pipeline", which looks exactly like a hang.
+ *
+ * The parser reads `out_time_us` (falling back to `out_time_ms`, which FFmpeg
+ * actually reports in microseconds despite the name) and turns it into a
+ * percentage of the expected duration.
+ *
+ * @param {ChildProcess} proc - the spawned ffmpeg process
+ * @param {Object} options
+ * @param {number} options.totalDuration - expected output duration in seconds
+ * @param {string} options.label - message shown next to the bar
+ * @param {string} [options.tag] - log category
+ * @param {Object} [options.details] - extra detail fields for every tick
+ * @returns {() => void} call to stop reporting (e.g. right before completion)
+ */
+function trackFFmpegProgress(proc, { totalDuration = 0, label = 'Muxing...', tag = 'RENDER:MUX', details = {} } = {}) {
+  if (!proc || !proc.stdout) return () => {};
+
+  const startedAt = Date.now();
+  let buffer = '';
+  let outSeconds = 0;
+  let lastEmit = 0;
+  let stopped = false;
+
+  const emit = (force = false) => {
+    if (stopped || !(totalDuration > 0)) return;
+    const now = Date.now();
+    // Throttle to one line per second so the terminal stays readable.
+    if (!force && now - lastEmit < 1000) return;
+    lastEmit = now;
+
+    const pct = Math.max(0, Math.min(99, Math.round((outSeconds / totalDuration) * 100)));
+    const elapsedSec = (now - startedAt) / 1000;
+    let etaText = '--';
+    if (outSeconds > 0.5 && elapsedSec > 1) {
+      const speed = outSeconds / elapsedSec;             // media seconds per wall second
+      if (speed > 0) {
+        const remaining = Math.max(0, (totalDuration - outSeconds) / speed);
+        etaText = remaining >= 60
+          ? `${Math.floor(remaining / 60)}m ${Math.round(remaining % 60)}s`
+          : `${Math.round(remaining)}s`;
+      }
+    }
+
+    formatTerminalProgress(tag, pct, 100, label, {
+      ...details,
+      progress: `${outSeconds.toFixed(1)}s / ${totalDuration.toFixed(1)}s`,
+      speed: outSeconds > 0.5 && elapsedSec > 1 ? `${(outSeconds / elapsedSec).toFixed(1)}x` : '--',
+      eta: etaText
+    });
+  };
+
+  proc.stdout.on('data', (chunk) => {
+    buffer += chunk.toString();
+    const lines = buffer.split('\n');
+    buffer = lines.pop(); // keep the trailing partial line
+
+    // Only report when this chunk actually completed a progress line —
+    // otherwise a chunk that ends mid-line would emit a stale value.
+    let updated = false;
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (trimmed.startsWith('out_time_us=') || trimmed.startsWith('out_time_ms=')) {
+        const micros = parseFloat(trimmed.split('=')[1]);
+        if (!isNaN(micros)) {
+          outSeconds = micros / 1e6;
+          updated = true;
+        }
+      } else if (trimmed === 'progress=end') {
+        outSeconds = totalDuration;
+        updated = true;
+      }
+    }
+    if (updated) emit();
+  });
+
+  return () => { stopped = true; };
+}
+
 class VideoRendererService {
   constructor() {
     this.videoStorageDir = path.join(__dirname, '../../storage/videos');
@@ -192,7 +276,9 @@ class VideoRendererService {
 
     try {
       // STAGE 2: Combine Original Video + PCM Muted Background + Master Voice Track
-      const ffmpegArgs = ['-y', '-i', videoPath];
+      // `-progress pipe:1 -nostats` streams machine-readable progress to stdout so
+      // this long stage can report a live percentage instead of going silent.
+      const ffmpegArgs = ['-y', '-progress', 'pipe:1', '-nostats', '-i', videoPath];
       const filterComplex = [];
       const extraAudioInputs = [];
       let finalAudioMap = null;
@@ -251,11 +337,21 @@ class VideoRendererService {
             filterComplex.push(`[bgm_vol][2:a]amix=inputs=2:dropout_transition=0:normalize=0[final_audio]`);
             finalAudioMap = '[final_audio]';
           } else {
-            formatTerminalLog('MUTE:PROCESS', `🔊 MUTE ORIGINAL VOICE is DISABLED (removeSpoken: false). Original audio preserved at 100%.`);
+            // Mute Voice is OFF, so the original track is kept — but it must still
+            // obey the BGM slider. That track holds the speech AND the music
+            // together and they cannot be separated, so the BGM level scales the
+            // whole thing. Without this the slider was a silent no-op whenever
+            // Mute Voice was OFF: BGM 0% still played the original at 100%.
+            const bgScale = ((Math.max(0, Math.min(100, bgVolumePct)) / 100) * videoVolMult);
+            formatTerminalLog('MUTE:PROCESS', `🔊 MUTE ORIGINAL VOICE is DISABLED (removeSpoken: false). Original audio scaled to ${bgVolumePct}%${bgVolumePct === 0 ? ' (complete silence)' : ''}.`, {
+              bgVolume: `${bgVolumePct}%`,
+              appliedGain: bgScale.toFixed(3),
+              note: 'original speech + music are inseparable in this mode'
+            });
             ffmpegArgs.push('-i', masterVoiceData.masterVoicePath);
             extraAudioInputs.push(masterVoiceData.masterVoicePath);
 
-            filterComplex.push(`[0:a]volume=${videoVolMult.toFixed(3)}[orig_aud]`);
+            filterComplex.push(`[0:a]volume=${bgScale.toFixed(3)}[orig_aud]`);
             filterComplex.push(`[orig_aud][1:a]amix=inputs=2:dropout_transition=0:normalize=0[final_audio]`);
             finalAudioMap = '[final_audio]';
           }
@@ -314,11 +410,21 @@ class VideoRendererService {
         const proc = spawn('ffmpeg', ffmpegArgs);
         let stderr = '';
 
+        // Live progress bar for the whole mux, so a multi-minute stage on a long
+        // video no longer looks frozen.
+        const stopProgress = trackFFmpegProgress(proc, {
+          totalDuration: videoDuration,
+          label: 'Muxing final video and audio stream...',
+          tag: 'RENDER:MUX',
+          details: { out: outputFilename }
+        });
+
         proc.stderr.on('data', chunk => {
           stderr += chunk.toString();
         });
 
         proc.on('close', async (code) => {
+          stopProgress();
           if (code !== 0) {
             const copyFailure = stderr.includes('could not find tag')
               || stderr.includes('Invalid argument')
@@ -514,7 +620,7 @@ class VideoRendererService {
    */
   async renderWithTranscode({ videoPath, extraAudioInputs = [], filterComplex, finalAudioMap, videoDuration, outputPath, outputFilename }) {
     return new Promise((resolve, reject) => {
-      const args = ['-y', '-i', videoPath];
+      const args = ['-y', '-progress', 'pipe:1', '-nostats', '-i', videoPath];
       extraAudioInputs.forEach(inputPath => {
         if (inputPath && fs.existsSync(inputPath)) {
           args.push('-i', inputPath);
@@ -535,8 +641,17 @@ class VideoRendererService {
 
       const proc = spawn('ffmpeg', args);
       let stderr = '';
+
+      const stopProgress = trackFFmpegProgress(proc, {
+        totalDuration: videoDuration,
+        label: 'Transcoding final video and audio stream...',
+        tag: 'RENDER:MUX',
+        details: { out: outputFilename, mode: 'libx264 fallback' }
+      });
+
       proc.stderr.on('data', chunk => { stderr += chunk.toString(); });
       proc.on('close', code => {
+        stopProgress();
         if (code !== 0) {
           return reject(new Error(`FFmpeg transcode failed (code ${code}): ${stderr.slice(-300)}`));
         }
@@ -709,3 +824,5 @@ class VideoRendererService {
 }
 
 module.exports = new VideoRendererService();
+// Exposed for unit testing — the FFmpeg progress parser, not part of the public API.
+module.exports.trackFFmpegProgress = trackFFmpegProgress;

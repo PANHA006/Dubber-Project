@@ -408,7 +408,9 @@ class GroqService {
       });
 
       formatTerminalLog('GROQ:SUCCESS', `Generated ${finalSubtitles.length} aligned subtitles using Groq [${modelName}]`);
-      return finalSubtitles;
+      // Forward the detected source language so the translation router can choose
+      // between the direct Chinese->Khmer path and the bridged (via English) path.
+      return { segments: finalSubtitles, language: detectedLang !== 'unknown' ? detectedLang : null };
     } finally {
       if (tempCompressedPath && fs.existsSync(tempCompressedPath)) {
         try { fs.unlinkSync(tempCompressedPath); } catch (_) {}

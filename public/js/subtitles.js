@@ -248,19 +248,22 @@ export function renderSubtitleTable() {
       <td class="py-2.5 px-3 text-center">
         <input type="checkbox" ${sub.selected ? 'checked' : ''} data-id="${sub.id}" class="sub-row-check rounded border-slate-700 bg-slate-800 text-indigo-600 focus:ring-0 focus:ring-offset-0 cursor-pointer" />
       </td>
-      <td class="py-2 px-2.5 font-mono text-slate-300 text-[11px] w-24">
-        <input type="text" value="${sub.start}" data-field="start" data-id="${sub.id}" class="sub-time-input bg-transparent hover:bg-slate-800/80 focus:bg-slate-800 focus:border-indigo-500 border border-transparent rounded px-1.5 py-1 w-full font-mono outline-hidden text-xs" />
+      <td class="py-2 px-1.5 font-mono text-slate-300 text-[11px] w-[68px] min-w-[68px]">
+        <input type="text" value="${sub.start}" data-field="start" data-id="${sub.id}" class="sub-time-input bg-transparent hover:bg-slate-800/80 focus:bg-slate-800 focus:border-indigo-500 border border-transparent rounded px-1 py-1 w-full font-mono outline-hidden text-[11px] tabular-nums" />
       </td>
-      <td class="py-2 px-2.5 font-mono text-slate-300 text-[11px] w-24">
-        <input type="text" value="${sub.end}" data-field="end" data-id="${sub.id}" class="sub-time-input bg-transparent hover:bg-slate-800/80 focus:bg-slate-800 focus:border-indigo-500 border border-transparent rounded px-1.5 py-1 w-full font-mono outline-hidden text-xs" />
+      <td class="py-2 px-1.5 font-mono text-slate-300 text-[11px] w-[68px] min-w-[68px]">
+        <input type="text" value="${sub.end}" data-field="end" data-id="${sub.id}" class="sub-time-input bg-transparent hover:bg-slate-800/80 focus:bg-slate-800 focus:border-indigo-500 border border-transparent rounded px-1 py-1 w-full font-mono outline-hidden text-[11px] tabular-nums" />
       </td>
-      <td class="py-2 px-3 text-slate-300 text-xs">
-        <input type="text" value="${escapeHtml(sub.originalText || '')}" data-id="${sub.id}" class="sub-original-text-input w-full bg-transparent hover:bg-slate-800/60 focus:bg-slate-800 focus:border-indigo-500/60 border border-transparent rounded px-2 py-1 outline-hidden text-slate-300 transition text-xs placeholder:text-slate-600" placeholder="Original speech..." />
+      <td class="py-2 px-3 align-top">
+        <input type="text" value="${escapeHtml(sub.originalText || '')}" data-id="${sub.id}" class="sub-original-text-input w-full bg-transparent hover:bg-slate-800/60 focus:bg-slate-800 focus:border-indigo-500/60 border border-transparent rounded px-2 py-1 outline-hidden text-slate-200 transition text-xs placeholder:text-slate-600" placeholder="Original speech..." />
         ${
-          sub.englishText
-            ? `<div class="text-[10.5px] text-cyan-400 font-sans mt-0.5 px-1 truncate flex items-center gap-1 opacity-90 hover:opacity-100 transition" title="English Pivot: ${escapeHtml(sub.englishText)}">
-                <span class="text-[9px] font-bold font-mono px-1 py-0.2 rounded bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">EN</span>
-                <span class="truncate">${escapeHtml(sub.englishText)}</span>
+          // Show the English pivot ONLY when it is a genuinely different text.
+          // A direct Chinese -> Khmer translation mirrors originalText into
+          // englishText purely as bookkeeping, and must not surface a line here.
+          hasEnglishPivot(sub)
+            ? `<div class="mt-1 flex items-start gap-1.5 px-1" title="English Pivot (Step 1): ${escapeHtml(sub.englishText)}">
+                <span class="shrink-0 mt-[1px] text-[9px] font-bold font-mono px-1 py-0.5 rounded bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 leading-none">EN</span>
+                <textarea rows="1" data-id="${sub.id}" class="sub-english-text-input flex-1 min-w-0 bg-transparent hover:bg-slate-800/60 focus:bg-slate-800 focus:border-cyan-500/60 border border-transparent rounded px-1.5 py-0.5 outline-hidden text-cyan-300/90 transition text-[11px] leading-snug resize-none overflow-hidden block placeholder:text-slate-600" placeholder="English pivot...">${escapeHtml(sub.englishText)}</textarea>
               </div>`
             : ''
         }
@@ -342,7 +345,7 @@ export function renderSubtitleTable() {
   });
 
   attachTableEventListeners();
-  document.querySelectorAll('.sub-text-input').forEach(ta => autoResizeTextarea(ta));
+  document.querySelectorAll('.sub-text-input, .sub-english-text-input').forEach(ta => autoResizeTextarea(ta));
   if (window.lucide) window.lucide.createIcons();
 }
 
@@ -388,6 +391,19 @@ function attachTableEventListeners() {
       const sub = state.subtitles.find(s => s.id === id);
       if (sub) {
         sub.originalText = e.target.value;
+        state.emit('subtitlesChanged', state.subtitles);
+      }
+    };
+  });
+
+  // English pivot inputs (Step 1 output, editable so it can be re-run into Khmer)
+  document.querySelectorAll('.sub-english-text-input').forEach(input => {
+    input.oninput = (e) => {
+      autoResizeTextarea(e.target);
+      const id = e.target.getAttribute('data-id');
+      const sub = state.subtitles.find(s => s.id === id);
+      if (sub) {
+        sub.englishText = e.target.value;
         state.emit('subtitlesChanged', state.subtitles);
       }
     };
@@ -544,6 +560,7 @@ export function syncSubtitlesFromDOM() {
     const startInput = document.querySelector(`.sub-time-input[data-id="${sub.id}"][data-field="start"]`);
     const endInput = document.querySelector(`.sub-time-input[data-id="${sub.id}"][data-field="end"]`);
     const origInput = document.querySelector(`.sub-original-text-input[data-id="${sub.id}"]`);
+    const enInput = document.querySelector(`.sub-english-text-input[data-id="${sub.id}"]`);
     const kmInput = document.querySelector(`.sub-text-input[data-id="${sub.id}"]`);
     const voiceSelect = document.querySelector(`.sub-voice-select[data-id="${sub.id}"]`);
 
@@ -557,6 +574,9 @@ export function syncSubtitlesFromDOM() {
     }
     if (origInput) {
       sub.originalText = origInput.value.trim();
+    }
+    if (enInput) {
+      sub.englishText = enInput.value.trim();
     }
     if (kmInput) {
       sub.khmerText = kmInput.value.trim();
@@ -742,6 +762,52 @@ export function importJSONContent(content) {
 }
 
 /**
+ * Pick the text that should be written into an exported .srt block.
+ *
+ * EXPORT CONTRACT — the ORIGINAL speech is exported, not the translation.
+ * SRT is the round-trip / hand-off format: the user exports the source text,
+ * translates it outside the app, then imports the result back as Khmer.
+ * `khmerText` is therefore only a fallback, so a row that has nothing but a
+ * translation still produces a usable block instead of an empty line.
+ *
+ * @param {Object} sub
+ * @returns {string}
+ */
+export function pickSrtExportText(sub) {
+  const original = (sub?.originalText || '').trim();
+  if (original) return original;
+  return (sub?.khmerText || '').trim();
+}
+
+/**
+ * Build a SubRip (.srt) document from the subtitle list.
+ *
+ * Kept as a pure function (no DOM, no state) so the export contract can be
+ * unit-tested directly instead of through a duplicated copy of this logic.
+ *
+ * @param {Array<Object>} subtitles
+ * @returns {string}
+ */
+export function buildSRTString(subtitles) {
+  if (!Array.isArray(subtitles) || subtitles.length === 0) return '';
+
+  let srtContent = '';
+  subtitles.forEach((sub, index) => {
+    const startTime = (typeof sub.startSec === 'number' && !isNaN(sub.startSec))
+      ? formatTimecodeSRT(sub.startSec)
+      : (sub.start || '00:00:00,000');
+    const endTime = (typeof sub.endSec === 'number' && !isNaN(sub.endSec))
+      ? formatTimecodeSRT(sub.endSec)
+      : (sub.end || '00:00:00,000');
+
+    srtContent += `${index + 1}\r\n`;
+    srtContent += `${startTime} --> ${endTime}\r\n`;
+    srtContent += `${pickSrtExportText(sub)}\r\n\r\n`;
+  });
+  return srtContent;
+}
+
+/**
  * Real SRT File Export
  * Generates an actual .srt text string and triggers browser file download
  */
@@ -753,44 +819,23 @@ export function exportSRTFile(filename) {
     return;
   }
 
-  // Derive dynamic filename from loaded video if available
-  if (!filename || filename === 'subtitles_khmer.srt') {
-    if (state.videoName) {
-      const baseName = state.videoName.replace(/\.[^/.]+$/, '');
-      filename = `${baseName}.srt`;
-    } else {
-      filename = 'subtitles.srt';
-    }
-  }
+  // The hand-off file always uses a fixed name so the external translation
+  // round-trip has a predictable filename to work with.
+  const downloadName = filename || 'Subtitle.srt';
 
-  let srtContent = '';
-  state.subtitles.forEach((sub, index) => {
-    const startTime = (typeof sub.startSec === 'number' && !isNaN(sub.startSec))
-      ? formatTimecodeSRT(sub.startSec)
-      : (sub.start || '00:00:00,000');
-    const endTime = (typeof sub.endSec === 'number' && !isNaN(sub.endSec))
-      ? formatTimecodeSRT(sub.endSec)
-      : (sub.end || '00:00:00,000');
-    const text = (sub.khmerText && sub.khmerText.trim())
-      ? sub.khmerText.trim()
-      : (sub.originalText ? sub.originalText.trim() : '');
-
-    srtContent += `${index + 1}\r\n`;
-    srtContent += `${startTime} --> ${endTime}\r\n`;
-    srtContent += `${text}\r\n\r\n`;
-  });
+  const srtContent = buildSRTString(state.subtitles);
 
   const blob = new Blob([srtContent], { type: 'text/plain;charset=utf-8' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = filename;
+  a.download = downloadName;
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
   URL.revokeObjectURL(url);
 
-  window.showToast?.(`✅ ទាញយកឯកសារ ${filename} (SRT) ជោគជ័យ!`);
+  window.showToast?.(`✅ ទាញយកឯកសារ ${downloadName} ជោគជ័យ! (អត្ថបទដើម Original សម្រាប់បកប្រែខាងក្រៅ)`);
 }
 
 /**
@@ -805,8 +850,258 @@ export function triggerSRTUpload() {
 }
 
 /**
+ * Parse a SubRip (.srt) document into the project's subtitle row shape.
+ *
+ * IMPORT CONTRACT — the text found in the file becomes the KHMER line.
+ * SRT is the round-trip / hand-off format: the user exports the original
+ * speech, translates it outside the app, then imports the result here as the
+ * Khmer dubbing text. `originalText` is deliberately left empty; the smart
+ * merge below restores it from the project when the file matches.
+ *
+ * Kept as a pure function (no DOM, no state) so the import contract can be
+ * unit-tested directly instead of through a duplicated copy of this logic.
+ *
+ * @param {string} content
+ * @returns {Array<Object>}
+ */
+export function parseSRTContent(content) {
+  if (!content || typeof content !== 'string') return [];
+
+  const normalized = content.replace(/\r\n/g, '\n').replace(/\r/g, '\n').trim();
+  if (!normalized) return [];
+
+  const blocks = normalized.split(/\n\s*\n+/);
+  const parsed = [];
+
+  blocks.forEach((block, idx) => {
+    const lines = block.trim().split('\n').map(l => l.trim()).filter(l => l.length > 0);
+    const arrowIdx = lines.findIndex(l => l.includes('-->'));
+    if (arrowIdx === -1) return;
+
+    const timeMatch = lines[arrowIdx].match(/([0-9]{1,2}:[0-9]{2}:[0-9]{2}[,.:][0-9]{1,3})\s*-->\s*([0-9]{1,2}:[0-9]{2}:[0-9]{2}[,.:][0-9]{1,3})/);
+    if (!timeMatch) return;
+
+    const start = timeMatch[1].replace('.', ',');
+    const end = timeMatch[2].replace('.', ',');
+    const text = lines.slice(arrowIdx + 1).join(' ').trim();
+
+    parsed.push({
+      id: 'sub-' + (Date.now() + idx),
+      selected: false,
+      start: start,
+      end: end,
+      startSec: parseTimecodeSRT(start),
+      endSec: parseTimecodeSRT(end),
+      khmerText: text,
+      originalText: '',
+      englishText: '',
+      voice: 'Piseth (Male)',
+      status: 'Pending'
+    });
+  });
+
+  return parsed;
+}
+
+/**
+ * Default join tolerance, in seconds.
+ *
+ * The project stores start times rounded to the millisecond and SubRip keeps
+ * three decimals, so an exact match normally succeeds. The tolerance only has
+ * to absorb jitter from a re-transcription, so it stays small on purpose —
+ * widening it would start pairing genuinely different lines.
+ */
+export const JOIN_TOLERANCE_SEC = 0.20;
+
+/**
+ * Read a row's start time in seconds, whichever shape it arrives in.
+ * @param {Object} row
+ * @returns {number} Seconds, or NaN when unreadable.
+ */
+function rowStartSec(row) {
+  if (typeof row?.startSec === 'number' && !isNaN(row.startSec)) return row.startSec;
+  if (row?.start) return parseTimecodeSRT(row.start);
+  return NaN;
+}
+
+/**
+ * Join an imported SRT onto the current project by TIMECODE.
+ *
+ * Why timecode and not row position: `applySmartEndPadding()` extends every
+ * row's END by up to +0.70s (bounded by the next row's start), so `endSec` is
+ * NOT stable across a round-trip. `startSec` is never touched, which makes it
+ * the only reliable identity for a line. Matching by position also breaks as
+ * soon as a row is added or deleted in the table.
+ *
+ * Strategy, in order:
+ *   1. Greedy nearest-`startSec` match within `tolerance` (smallest delta wins,
+ *      each row and each block used at most once).
+ *   2. Interpolation between two confirmed timecode anchors — rescues a block
+ *      whose own timestamp was edited. Only accepted when the anchors agree on
+ *      the spacing, so an inserted or removed line is never absorbed.
+ *   3. Positional fallback — only when neither of the above matched ANYTHING
+ *      and the row counts are equal. The file is then from a different timing
+ *      base and the block number is the only remaining signal.
+ *   4. Anything still unmatched is appended as a NEW row at the end.
+ *
+ * Rows already in the table are never deleted, and a matched row keeps its
+ * `originalText`, `englishText`, `voice`, `id` and timing — only `khmerText`
+ * is replaced. The file's timings are used purely as the join key, never
+ * copied over the project's (already padded and video-aligned) timing.
+ *
+ * @param {Array<Object>} imported Rows produced by parseSRTContent().
+ * @param {Array<Object>} existing Current state.subtitles.
+ * @param {{tolerance?: number}} [options]
+ * @returns {{rows: Array<Object>, matched: number, byTimecode: number, byInterpolation: number, byPosition: number, appended: number, unmatchedExisting: number}}
+ */
+export function joinImportedSRT(imported, existing, options = {}) {
+  const tolerance = typeof options.tolerance === 'number' ? options.tolerance : JOIN_TOLERANCE_SEC;
+  const incoming = Array.isArray(imported) ? imported : [];
+  const rows = Array.isArray(existing) ? existing.map(r => ({ ...r })) : [];
+
+  // An empty file must never destroy the project — hand the rows straight back.
+  if (incoming.length === 0) {
+    return {
+      rows,
+      matched: 0,
+      byTimecode: 0,
+      byInterpolation: 0,
+      byPosition: 0,
+      appended: 0,
+      unmatchedExisting: rows.length
+    };
+  }
+
+  // Nothing to join against — every incoming block becomes a new row.
+  if (rows.length === 0) {
+    return {
+      rows: incoming.map(r => ({ ...r })),
+      matched: 0,
+      byTimecode: 0,
+      byInterpolation: 0,
+      byPosition: 0,
+      appended: incoming.length,
+      unmatchedExisting: 0
+    };
+  }
+
+  const blockTaken = new Array(incoming.length).fill(false);
+  const rowTaken = new Array(rows.length).fill(false);
+  const blockToRow = new Array(incoming.length).fill(-1);
+
+  // --- Pass 1: timecode join (greedy, globally smallest delta first) --------
+  const pairs = [];
+  incoming.forEach((block, bi) => {
+    const blockStart = rowStartSec(block);
+    if (isNaN(blockStart)) return;
+    rows.forEach((row, ri) => {
+      const rowStart = rowStartSec(row);
+      if (isNaN(rowStart)) return;
+      const delta = Math.abs(rowStart - blockStart);
+      if (delta <= tolerance) pairs.push({ bi, ri, delta });
+    });
+  });
+  pairs.sort((a, b) => a.delta - b.delta);
+
+  let byTimecode = 0;
+  for (const pair of pairs) {
+    if (blockTaken[pair.bi] || rowTaken[pair.ri]) continue;
+    blockTaken[pair.bi] = true;
+    rowTaken[pair.ri] = true;
+    blockToRow[pair.bi] = pair.ri;
+    rows[pair.ri].khmerText = incoming[pair.bi].khmerText;
+    byTimecode++;
+  }
+
+  // --- Pass 2: interpolation between confirmed anchors ----------------------
+  // A block whose timecode is broken but which sits between two timecode
+  // matches can be placed by counting: if the anchors agree on the spacing
+  // (blockSpan === rowSpan) the mapping between them is 1:1 and the block's
+  // row follows arithmetically.
+  //
+  // This is what separates "this one timestamp was edited" from "this is a new
+  // line". A new line makes the two anchors disagree on the spacing, so the
+  // guess is rejected and the block is appended instead of overwriting a row.
+  //
+  // Only timecode matches act as anchors — an interpolated row is not promoted
+  // to an anchor, so a bad guess can never cascade.
+  let byInterpolation = 0;
+  if (byTimecode > 0) {
+    const anchors = [];
+    incoming.forEach((_, bi) => {
+      if (blockToRow[bi] !== -1) anchors.push({ bi, ri: blockToRow[bi] });
+    });
+
+    incoming.forEach((block, bi) => {
+      if (blockTaken[bi]) return;
+
+      let prev = null;
+      let next = null;
+      for (const anchor of anchors) {
+        if (anchor.bi < bi) prev = anchor;
+        else if (anchor.bi > bi && next === null) next = anchor;
+      }
+
+      let expected = -1;
+      if (prev && next) {
+        const blockSpan = next.bi - prev.bi;
+        const rowSpan = next.ri - prev.ri;
+        // Spacing must agree, otherwise a line was inserted or removed here.
+        if (blockSpan === rowSpan) expected = prev.ri + (bi - prev.bi);
+      } else if (prev || next) {
+        // Only one anchor to lean on, so a 1:1 file-to-table correspondence has
+        // to be assumed — which is only meaningful when both sides are the same
+        // size. Without that, a stray trailing block could claim a real row.
+        if (incoming.length === rows.length) {
+          expected = prev ? prev.ri + (bi - prev.bi) : next.ri - (next.bi - bi);
+        }
+      }
+
+      if (expected < 0 || expected >= rows.length) return;
+      if (rowTaken[expected]) return;
+
+      blockTaken[bi] = true;
+      rowTaken[expected] = true;
+      blockToRow[bi] = expected;
+      rows[expected].khmerText = block.khmerText;
+      byInterpolation++;
+    });
+  }
+
+  // --- Pass 3: positional fallback -----------------------------------------
+  // Only when neither of the above matched ANYTHING. The file is then from a
+  // different timing base and the only remaining signal is the block number,
+  // which requires an equal row count to be meaningful.
+  let byPosition = 0;
+  if (byTimecode === 0 && byInterpolation === 0 && incoming.length === rows.length) {
+    incoming.forEach((block, bi) => {
+      if (blockTaken[bi] || rowTaken[bi]) return;
+      blockTaken[bi] = true;
+      rowTaken[bi] = true;
+      rows[bi].khmerText = block.khmerText;
+      byPosition++;
+    });
+  }
+
+  // --- Pass 4: append whatever is still unmatched ---------------------------
+  const appended = incoming.filter((_, bi) => !blockTaken[bi]).map(block => ({ ...block }));
+
+  return {
+    rows: rows.concat(appended),
+    matched: byTimecode + byInterpolation + byPosition,
+    byTimecode,
+    byInterpolation,
+    byPosition,
+    appended: appended.length,
+    unmatchedExisting: rowTaken.filter(taken => !taken).length
+  };
+}
+
+/**
  * Real SRT File Import
- * Parses an uploaded .srt file into state.subtitles
+ * Parses an uploaded .srt file and joins it onto the current table by timecode,
+ * treating the file's text as the Khmer translation of the project's original
+ * speech.
  */
 export function importSRTContent(content) {
   if (!content || typeof content !== 'string') {
@@ -815,48 +1110,50 @@ export function importSRTContent(content) {
   }
   stopVoicePlayback();
 
-  const normalized = content.replace(/\r\n/g, '\n').replace(/\r/g, '\n').trim();
-  const blocks = normalized.split(/\n\s*\n+/);
-  const parsed = [];
-
-  blocks.forEach((block, idx) => {
-    const lines = block.trim().split('\n').map(l => l.trim()).filter(l => l.length > 0);
-    const arrowIdx = lines.findIndex(l => l.includes('-->'));
-    if (arrowIdx !== -1) {
-      const timeLine = lines[arrowIdx];
-      const timeMatch = timeLine.match(/([0-9]{1,2}:[0-9]{2}:[0-9]{2}[,.:][0-9]{1,3})\s*-->\s*([0-9]{1,2}:[0-9]{2}:[0-9]{2}[,.:][0-9]{1,3})/);
-      if (timeMatch) {
-        const start = timeMatch[1].replace('.', ',');
-        const end = timeMatch[2].replace('.', ',');
-        const text = lines.slice(arrowIdx + 1).join(' ').trim();
-        
-        // Detect if text contains Khmer characters
-        const isKhmer = /[\u1780-\u17FF]/.test(text);
-
-        parsed.push({
-          id: 'sub-' + (Date.now() + idx),
-          selected: false,
-          start: start,
-          end: end,
-          startSec: parseTimecodeSRT(start),
-          endSec: parseTimecodeSRT(end),
-          khmerText: isKhmer ? text : '',
-          originalText: text,
-          voice: 'Piseth (Male)',
-          status: 'Pending'
-        });
-      }
-    }
-  });
-
-  if (parsed.length > 0) {
-    state.subtitles = parsed;
-    renderSubtitleTable();
-    state.emit('subtitlesChanged', state.subtitles);
-    window.showToast?.(`✅ បាននាំចូល Subtitle ចំនួន ${parsed.length} ជោគជ័យ!`);
-  } else {
+  const parsed = parseSRTContent(content);
+  if (parsed.length === 0) {
     window.showToast?.('⚠️ ទម្រង់ File SRT មិនត្រឹមត្រូវ');
+    return;
   }
+
+  const { rows, matched, byTimecode, byInterpolation, byPosition, appended } =
+    joinImportedSRT(parsed, state.subtitles);
+
+  state.subtitles = rows;
+  renderSubtitleTable();
+  state.emit('subtitlesChanged', state.subtitles);
+
+  if (appended === 0) {
+    const notes = [];
+    if (byInterpolation) notes.push(`${byInterpolation} តាម ID`);
+    if (byPosition) notes.push(`${byPosition} តាមលំដាប់`);
+    const suffix = notes.length ? ` (ក្នុងនោះ ${notes.join(' · ')})` : '';
+    window.showToast?.(`✅ ផ្គូផ្គងបាន ${matched}/${parsed.length} ជួរ${suffix}`);
+  } else {
+    window.showToast?.(
+      `✅ ផ្គូផ្គង ${matched} ជួរ (Timecode ${byTimecode}${byInterpolation ? ` · ID ${byInterpolation}` : ''}) · បន្ថែមជួរថ្មី ${appended} ជួរ`
+    );
+  }
+}
+
+/**
+ * Decide whether a subtitle row should display its English pivot line.
+ *
+ * The translator mirrors `originalText` into `englishText` when it takes the
+ * DIRECT Chinese -> Khmer path (there is no real English pivot). Showing that
+ * mirror would duplicate the Original column verbatim, so we suppress it.
+ *
+ * A row shows the EN line only when `englishText` is non-empty AND differs from
+ * the original text.
+ *
+ * @param {Object} sub
+ * @returns {boolean}
+ */
+export function hasEnglishPivot(sub) {
+  const en = (sub?.englishText || '').trim();
+  if (!en) return false;
+  const original = (sub?.originalText || sub?.text || '').trim();
+  return en.toLowerCase() !== original.toLowerCase();
 }
 
 function escapeHtml(str) {

@@ -56,6 +56,9 @@ export const state = {
   isGeneratingVideo: false,
   isTranscribing: false,
   isTranslating: false,
+  // Source language detected by the STT engine ('zh' | 'en' | ...). Drives the
+  // translate router: a Chinese source takes the direct 1-quota path.
+  sourceLanguage: null,
   geminiApiKey: typeof localStorage !== 'undefined' ? (localStorage.getItem('gemini_api_key') || '') : '',
   groqApiKey: typeof localStorage !== 'undefined' ? (localStorage.getItem('groq_api_key') || '') : '',
   serverHasGroqKey: false,

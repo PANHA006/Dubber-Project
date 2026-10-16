@@ -125,9 +125,13 @@ class WhisperService {
           }
 
           const segments = parsed.segments || [];
-          formatTerminalLog('WHISPER:DONE', `Extracted ${segments.length} discrete segments in ${elapsed}s (Audio Duration: ${parsed.duration}s, Lang: ${parsed.language})`);
+          // `language` is the STT-detected source language ('zh', 'en', 'km'...).
+          // It is forwarded to the caller so the translation router can pick the
+          // correct pipeline (direct Chinese->Khmer vs. bridged via English).
+          const language = parsed.language || null;
+          formatTerminalLog('WHISPER:DONE', `Extracted ${segments.length} discrete segments in ${elapsed}s (Audio Duration: ${parsed.duration}s, Lang: ${language || 'unknown'})`);
 
-          resolve(segments);
+          resolve({ segments, language });
         } catch (jsonErr) {
           formatTerminalLog('WHISPER:ERROR', `Failed to parse worker output: ${jsonErr.message}`);
           reject(new Error(`Invalid worker response: ${stdoutData.slice(0, 200)}...`));

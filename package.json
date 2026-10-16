@@ -16,7 +16,12 @@
     "test:pipeline": "node tests/full-pipeline.test.js",
     "test:ui": "node tests/ui-layout-verify.test.js",
     "test:regression": "node tests/regression-body-limit.test.js",
-    "test:all": "node tests/e2e-api.test.js && node tests/regression-body-limit.test.js"
+    "test:prompts": "node tests/translation-prompts.test.js",
+    "test:routing": "node tests/smart-language-routing.test.js",
+    "test:srt": "node tests/test-srt-import-export.test.js",
+    "test:render": "node tests/test-render-progress.test.js",
+    "test:bgm": "node tests/test-bgm-volume.test.js",
+    "test:all": "node tests/e2e-api.test.js && node tests/regression-body-limit.test.js && node tests/translation-prompts.test.js && node tests/smart-language-routing.test.js && node tests/test-srt-import-export.test.js && node tests/test-render-progress.test.js && node tests/test-bgm-volume.test.js"
   },
   "keywords": [
     "dubber",
