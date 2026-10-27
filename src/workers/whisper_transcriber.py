@@ -235,16 +235,21 @@ def run_transcription(audio_path, model_size="base", device="cpu", compute_type=
             sys.stderr.write(f"[PROGRESS:{pct}] [{seg.start:.1f}s -> {seg.end:.1f}s] {seg.text[:40]}\n")
             sys.stderr.flush()
 
-    # Step 3: Split by punctuation using word timestamps
-    processed_segments = split_segments_by_punctuation(raw_segments)
-
-    # Step 4: Merge adjacent segments respecting max_pause_gap and max_merge_limit
-    if merge or max_merge_limit > 1:
-        processed_segments = merge_fragmented_segments(
-            processed_segments,
-            max_gap=float(max_pause_gap),
-            max_merge_count=int(max_merge_limit)
-        )
+    # Step 3: Split by punctuation or bypass for Freeze Mode (max_merge_limit <= 1)
+    if int(max_merge_limit) <= 1:
+        processed_segments = [
+            {"startSec": s["start"], "endSec": s["end"], "text": s["text"]}
+            for s in raw_segments if s.get("text", "").strip()
+        ]
+    else:
+        processed_segments = split_segments_by_punctuation(raw_segments)
+        # Step 4: Merge adjacent segments respecting max_pause_gap and max_merge_limit
+        if merge or max_merge_limit > 1:
+            processed_segments = merge_fragmented_segments(
+                processed_segments,
+                max_gap=float(max_pause_gap),
+                max_merge_count=int(max_merge_limit)
+            )
 
     # Format into final subtitle schema
     final_output = []

@@ -73,6 +73,11 @@ export function renderTimelineTracks() {
   trackT1.innerHTML = '';
   trackA1.innerHTML = '';
 
+  if (!state.subtitles || state.subtitles.length === 0) return;
+
+  const fragT1 = document.createDocumentFragment();
+  const fragA1 = document.createDocumentFragment();
+
   state.subtitles.forEach((sub) => {
     const leftPx = sub.startSec * pxPerSec;
     const widthPx = Math.max(24, (sub.endSec - sub.startSec) * pxPerSec);
@@ -86,19 +91,11 @@ export function renderTimelineTracks() {
     }`;
     tBlock.style.left = `${leftPx}px`;
     tBlock.style.width = `${widthPx}px`;
-    tBlock.title = `${sub.start} - ${sub.end}: ${sub.khmerText}`;
-    tBlock.textContent = sub.khmerText;
+    tBlock.title = `${sub.start} - ${sub.end}: ${sub.khmerText || ''}`;
+    tBlock.textContent = sub.khmerText || '';
+    tBlock.dataset.id = sub.id;
 
-    tBlock.onclick = (e) => {
-      e.stopPropagation();
-      window.seekTo?.(sub.startSec);
-      state.subtitles.forEach(s => s.selected = (s.id === sub.id));
-      state.emit('subtitlesChanged', state.subtitles);
-      // Highlight in table
-      const row = document.querySelector(`tr[data-id="${sub.id}"]`);
-      row?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-    };
-    trackT1.appendChild(tBlock);
+    fragT1.appendChild(tBlock);
 
     // Track A1 block (Audio Dub Waveform)
     const aBlock = document.createElement('div');
@@ -110,8 +107,9 @@ export function renderTimelineTracks() {
     aBlock.style.left = `${leftPx}px`;
     aBlock.style.width = `${widthPx}px`;
     aBlock.title = `Audio [${sub.voice}] - ${sub.status}`;
+    aBlock.dataset.id = sub.id;
 
-    // SVG / CSS Simulated Waveform Bars
+    // Fast CSS Simulated Waveform Bars
     aBlock.innerHTML = `
       <div class="flex items-center gap-0.5 w-full opacity-80 pointer-events-none">
         <span class="h-2 w-0.5 bg-violet-400 rounded-full"></span>
@@ -123,8 +121,44 @@ export function renderTimelineTracks() {
         <span class="h-1.5 w-0.5 bg-violet-400 rounded-full"></span>
       </div>
     `;
-    trackA1.appendChild(aBlock);
+    fragA1.appendChild(aBlock);
   });
+
+  trackT1.appendChild(fragT1);
+  trackA1.appendChild(fragA1);
+
+  // Attach click delegation on trackT1 once (lightning-fast selection without DOM rebuilding)
+  if (!trackT1._delegated) {
+    trackT1._delegated = true;
+    trackT1.addEventListener('click', (e) => {
+      const block = e.target.closest('[data-id]');
+      if (!block) return;
+      const id = block.dataset.id;
+      const sub = state.subtitles.find(s => s.id === id);
+      if (!sub) return;
+
+      window.seekTo?.(sub.startSec);
+      state.subtitles.forEach(s => (s.selected = (s.id === sub.id)));
+
+      // Fast class toggle directly on existing blocks
+      trackT1.querySelectorAll('[data-id]').forEach(b => {
+        const isSel = (b.dataset.id === id);
+        b.className = `absolute h-5.5 rounded flex items-center px-1.5 text-[10px] font-khmer truncate cursor-pointer transition shadow-sm select-none ${
+          isSel
+            ? 'bg-indigo-600/90 text-white border border-indigo-300 ring-1 ring-indigo-400'
+            : 'bg-indigo-950/70 border border-indigo-500/40 text-indigo-200 hover:bg-indigo-900/80'
+        }`;
+      });
+
+      // Highlight corresponding row in table
+      const row = document.querySelector(`tr[data-id="${sub.id}"]`);
+      if (row) {
+        document.querySelectorAll('#subtitle-table-body tr').forEach(r => r.classList.remove('bg-indigo-950/20'));
+        row.classList.add('bg-indigo-950/20');
+        row.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      }
+    });
+  }
 
   updatePlayheadPosition(state.currentTime);
 }

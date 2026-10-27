@@ -4,6 +4,7 @@ const fs = require('fs');
 const { formatTerminalLog, formatTerminalProgress } = require('../utils/terminal-logger');
 const historyService = require('./history.service');
 const pcmMuterService = require('./pcm-muter.service');
+const aiAudioSeparatorService = require('./ai-audio-separator.service');
 
 /**
  * Report FFmpeg's own progress while a long render runs.
@@ -291,17 +292,21 @@ class VideoRendererService {
             // with padBefore: 0.25s and padAfter: 0.25s
             const padBefore = typeof settings.padBefore === 'number' ? settings.padBefore : 0.25;
             const padAfter = typeof settings.padAfter === 'number' ? settings.padAfter : 0.25;
-            const muteLevelPct = 0; // 100% digital silence during speech
+            // Smart Audio Ducking: If user enabled BGM, duck original speech down to subtle level (e.g. 10-15%)
+            // so movie soundtrack & sound effects continue smoothly without 93% silence holes.
+            const duckLevelPct = bgVolumePct > 0 ? Math.max(5, Math.min(25, Math.round(bgVolumePct * 0.25))) : 0;
 
-            formatTerminalProgress('RENDER:PROGRESS', 2, 4, `Extracting BGM_resolve & muting original voice 100%...`, {
+            formatTerminalProgress('RENDER:PROGRESS', 2, 4, `Extracting BGM_resolve & applying smart voice ducking (${duckLevelPct}%)...`, {
               status: 'ENABLED',
-              muteLevel: '100% Silence (0x00)',
+              duckLevel: `${duckLevelPct}% (Smooth BGM)`,
               padBuffer: '±0.25s'
             });
 
-            formatTerminalLog('MUTE:PROCESS', `🔇 PCM BYTE-LEVEL AUDIO MUTING: Original voice 100% MUTED during speech (0x00 silence) [±0.25s buffer]`, {
+            formatTerminalLog('MUTE:PROCESS', `🎙️ SMART AUDIO DUCKING & VOICE ISOLATION: Dialogue ducked to ${duckLevelPct}% (full ${bgVolumePct}% outside speech) [±${padBefore}s buffer]`, {
               status: 'ENABLED',
               voiceSegmentsCount: validVoices.length,
+              duckLevel: `${duckLevelPct}%`,
+              bgVolumeOutsideSpeech: `${bgVolumePct}%`,
               padBefore: `${padBefore}s`,
               padAfter: `${padAfter}s`
             });
@@ -310,20 +315,23 @@ class VideoRendererService {
               validVoices.forEach((v, idx) => {
                 const s = Math.max(0, (v.startSec || 0) - padBefore).toFixed(2);
                 const e = Math.max(v.startSec + 0.5, (v.endSec || (v.startSec + 2.0)) + padAfter).toFixed(2);
-                formatTerminalLog('MUTE:SEGMENT', `  ↳ Segment #${idx + 1} [${s}s -> ${e}s]: Original voice muted 100% (0x00)`);
+                formatTerminalLog('MUTE:SEGMENT', `  ↳ Segment #${idx + 1} [${s}s -> ${e}s]: Original voice ducked to ${duckLevelPct}%`);
               });
             } else {
               const firstS = Math.max(0, (validVoices[0].startSec || 0) - padBefore).toFixed(2);
               const lastE = Math.max(validVoices[validVoices.length - 1].startSec + 0.5, (validVoices[validVoices.length - 1].endSec || 0) + padAfter).toFixed(2);
-              formatTerminalLog('MUTE:SUMMARY', `Muted all ${validVoices.length} speech segments from ${firstS}s to ${lastE}s (zero voice bleed)`);
+              formatTerminalLog('MUTE:SUMMARY', `Smart-ducked all ${validVoices.length} speech segments from ${firstS}s to ${lastE}s (continuous background audio)`);
             }
 
-            const mutedBgmPath = await pcmMuterService.extractAndMuteBackgroundAudio({
+            const mutedBgmPath = await aiAudioSeparatorService.extractAndIsolateBgm({
               videoPath,
               subtitles: validVoices,
-              settings: { bgVolume: muteLevelPct, padBefore, padAfter }
+              settings: { bgVolume: duckLevelPct, padBefore, padAfter, hfToken: settings ? settings.hfToken : null }
             });
-            tempCleanups.push(mutedBgmPath);
+            // Only cleanup if it is a temporary scratch file and not a persistent cached BGM
+            if (!mutedBgmPath.includes('cache')) {
+              tempCleanups.push(mutedBgmPath);
+            }
 
             ffmpegArgs.push('-i', mutedBgmPath);
             extraAudioInputs.push(mutedBgmPath);

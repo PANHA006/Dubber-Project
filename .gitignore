@@ -43,7 +43,9 @@ develop-eggs/
 
 # Runtime key manager state (Auto-generated quota & lockout cache)
 .key-status.json
-.key-status.json.*
+.groq-key-status.json
+.key-status.json
+.groq-key-status.json.*
 
 # Logs & debugging outputs
 logs/

@@ -49,8 +49,9 @@ VOICE_MAP = {
     "female": "km-KH-SreymomNeural"
 }
 
-NET_CONCURRENCY = max(1, int(os.environ.get("TTS_NET_CONCURRENCY", "8") or 8))
-CPU_CONCURRENCY = max(1, int(os.environ.get("TTS_CPU_CONCURRENCY", "3") or 3))
+TOTAL_CORES = os.cpu_count() or 8
+NET_CONCURRENCY = max(16, int(os.environ.get("TTS_NET_CONCURRENCY", str(TOTAL_CORES * 2)) or 16))
+CPU_CONCURRENCY = max(4, int(os.environ.get("TTS_CPU_CONCURRENCY", str(TOTAL_CORES)) or TOTAL_CORES))
 MAX_RETRIES = max(0, int(os.environ.get("TTS_MAX_RETRIES", "3") or 3))
 PROCESS_TIMEOUT = 120  # seconds before a helper binary is considered hung
 
@@ -159,14 +160,13 @@ def mp3_duration_seconds(path):
 
 
 def get_audio_duration(file_path):
-    """Accurate duration in seconds — ffprobe first, MP3 header parse as fallback."""
-    probed = ffprobe_duration(file_path, allow_size_estimate=False)
-    if probed is not None:
-        return probed
+    """Ultra-fast duration in seconds — MP3 header parse in memory (<0.1ms), ffprobe fallback."""
     parsed = mp3_duration_seconds(file_path)
     if parsed is not None and parsed > 0:
         return parsed
-    # Last resort estimation for 128kbps mp3: bytes / 16000
+    probed = ffprobe_duration(file_path, allow_size_estimate=False)
+    if probed is not None:
+        return probed
     try:
         return round(os.path.getsize(file_path) / 16000.0, 2)
     except Exception:
@@ -243,7 +243,7 @@ async def trim_trailing_silence(file_path):
             "start_threshold=-40dB,areverse,apad=pad_dur=0.08"
         )
         code, _ = await run_process([
-            "ffmpeg", "-y", "-v", "error",
+            "ffmpeg", "-y", "-v", "error", "-threads", "1",
             "-i", file_path,
             "-filter:a", filter_str,
             "-vn", temp_trimmed
@@ -265,7 +265,7 @@ async def apply_speed(file_path, speed):
     temp_fitted = file_path + ".fitted.mp3"
     try:
         code, _ = await run_process([
-            "ffmpeg", "-y", "-v", "error",
+            "ffmpeg", "-y", "-v", "error", "-threads", "1",
             "-i", file_path,
             "-filter:a", f"atempo={speed}",
             "-vn", temp_fitted
@@ -308,6 +308,11 @@ async def synthesize(text, voice, out_path, net_sem):
     last_error = None
     for attempt in range(MAX_RETRIES + 1):
         try:
+            if os.path.isfile(out_path):
+                try:
+                    os.remove(out_path)
+                except Exception:
+                    pass
             # Hold the slot only for the network call, never during backoff.
             async with net_sem:
                 communicator = edge_tts.Communicate(text, voice)
@@ -317,6 +322,11 @@ async def synthesize(text, voice, out_path, net_sem):
             raise RuntimeError("Edge TTS produced no audio")
         except Exception as exc:
             last_error = exc
+            if os.path.isfile(out_path):
+                try:
+                    os.remove(out_path)
+                except Exception:
+                    pass
             if attempt < MAX_RETRIES:
                 await asyncio.sleep(0.6 * (2 ** attempt))
                 continue
@@ -383,6 +393,8 @@ async def generate_single_item(item, output_dir, net_sem, cpu_sem):
     except Exception:
         pass
 
+    meta_path = out_path + ".meta.json"
+
     # --- cache hit: nothing to synthesise ---
     if os.path.isfile(out_path) and os.path.getsize(out_path) > 1000:
         # Header parse, not ffprobe: a re-run must feel instant, and the
@@ -390,6 +402,20 @@ async def generate_single_item(item, output_dir, net_sem, cpu_sem):
         cached_duration = mp3_duration_seconds(out_path)
         if cached_duration is None or cached_duration <= 0:
             cached_duration = get_audio_duration(out_path)
+
+        cached_speed = 1.0
+        if os.path.isfile(meta_path):
+            try:
+                with open(meta_path, "r", encoding="utf-8") as mf:
+                    meta = json.load(mf)
+                    cached_speed = float(meta.get("speedApplied", 1.0))
+            except Exception:
+                pass
+        elif target_duration and target_duration > 0.4 and cached_duration:
+            needed_ratio = cached_duration / target_duration
+            if needed_ratio > 1.08:
+                cached_speed = round(min(1.35, max(1.05, needed_ratio)), 2)
+
         return {
             "id": sub_id,
             "success": True,
@@ -398,7 +424,7 @@ async def generate_single_item(item, output_dir, net_sem, cpu_sem):
             "voice": chosen_voice,
             "duration": cached_duration,
             "targetDuration": round(target_duration, 2) if target_duration else None,
-            "speedApplied": 1.0,
+            "speedApplied": cached_speed,
             "size": os.path.getsize(out_path),
             "cached": True
         }
@@ -427,6 +453,16 @@ async def generate_single_item(item, output_dir, net_sem, cpu_sem):
                     speed_applied = clamped_speed
                 else:
                     duration = initial_duration
+
+        try:
+            with open(meta_path, "w", encoding="utf-8") as mf:
+                json.dump({
+                    "speedApplied": speed_applied,
+                    "duration": duration,
+                    "targetDuration": target_duration
+                }, mf)
+        except Exception:
+            pass
 
         return {
             "id": sub_id,
@@ -492,7 +528,8 @@ async def main():
                 "voice": res.get("voice", "Piseth (Male)"),
                 "duration": res.get("duration", 0),
                 "speed": res.get("speedApplied", 1.0),
-                "status": "OK" if res.get("success") else "FAIL"
+                "status": "OK" if res.get("success") else "FAIL",
+                "error": res.get("error")
             }
             print(f"PROGRESS_JSON:{json.dumps(p_data)}", file=sys.stderr, flush=True)
         except Exception:
@@ -506,9 +543,14 @@ async def main():
     # gather preserves input order, so results stay aligned with the request.
     results = await asyncio.gather(*(run_one(item) for item in items))
 
+    succeeded_count = sum(1 for r in results if r.get("success"))
+    failed_count = len(results) - succeeded_count
+
     print(json.dumps({
-        "success": True,
-        "count": len(results),
+        "success": succeeded_count > 0 or len(results) == 0,
+        "count": succeeded_count,
+        "total": len(results),
+        "failedCount": failed_count,
         "results": results
     }, ensure_ascii=False))
 

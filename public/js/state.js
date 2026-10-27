@@ -6,7 +6,7 @@ export const DEFAULT_DUBBING_SETTINGS = {
   maxMergeLimit: 3,       // 1 - 10 segments
   maxPauseGap: 0.20,      // 0.05 - 0.50s
   vadThreshold: 0.10,     // 0.10, 0.25, 0.35, 0.50
-  bgVolume: 8,            // 0 - 30%
+  bgVolume: 8,            // 0 - 100%
   removeSpokenVoice: true // boolean
 };
 
@@ -61,7 +61,12 @@ export const state = {
   sourceLanguage: null,
   geminiApiKey: typeof localStorage !== 'undefined' ? (localStorage.getItem('gemini_api_key') || '') : '',
   groqApiKey: typeof localStorage !== 'undefined' ? (localStorage.getItem('groq_api_key') || '') : '',
+  deepgramApiKey: typeof localStorage !== 'undefined' ? (localStorage.getItem('deepgram_api_key') || '') : '',
+  hfToken: typeof localStorage !== 'undefined' ? (localStorage.getItem('hf_token') || '') : '',
   serverHasGroqKey: false,
+  serverHasGeminiKey: false,
+  serverHasDeepgramKey: false,
+  serverHasHfToken: false,
   sttModel: typeof localStorage !== 'undefined' ? (localStorage.getItem('selected_stt_model') || 'groq-whisper-large-v3') : 'groq-whisper-large-v3',
   
   // Dubbing Settings

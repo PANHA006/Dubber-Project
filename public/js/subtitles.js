@@ -212,9 +212,125 @@ export function playVoice(subId) {
   };
 };
 
+
+const PLAY_ICON_SVG = '<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>';
+const PAUSE_ICON_SVG = '<svg class="w-3.5 h-3.5 animate-bounce" fill="none" stroke="currentColor" viewBox="0 0 24 24"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>';
+
+export function createSubtitleRowElement(sub, idx) {
+  const tr = document.createElement('tr');
+  tr.className = `group hover:bg-slate-800/40 transition-colors ${sub.selected ? 'bg-indigo-950/20' : ''}`;
+  tr.dataset.id = sub.id;
+
+  const isModified = sub.status === 'Modified' || sub.needsRegenerate;
+  const isReady = (sub.status === 'Ready' || sub.audioUrl) && !isModified;
+  const isPlaying = currentPlayingSubId === sub.id;
+
+  tr.innerHTML = `
+    <td class="py-2.5 px-3 text-center">
+      <input type="checkbox" ${sub.selected ? 'checked' : ''} data-id="${sub.id}" class="sub-row-check rounded border-slate-700 bg-slate-800 text-indigo-600 focus:ring-0 focus:ring-offset-0 cursor-pointer" />
+    </td>
+    <td class="py-2 px-1.5 font-mono text-slate-300 text-[11px] w-[68px] min-w-[68px]">
+      <input type="text" value="${sub.start}" data-field="start" data-id="${sub.id}" class="sub-time-input bg-transparent hover:bg-slate-800/80 focus:bg-slate-800 focus:border-indigo-500 border border-transparent rounded px-1 py-1 w-full font-mono outline-hidden text-[11px] tabular-nums" />
+    </td>
+    <td class="py-2 px-1.5 font-mono text-slate-300 text-[11px] w-[68px] min-w-[68px]">
+      <input type="text" value="${sub.end}" data-field="end" data-id="${sub.id}" class="sub-time-input bg-transparent hover:bg-slate-800/80 focus:bg-slate-800 focus:border-indigo-500 border border-transparent rounded px-1 py-1 w-full font-mono outline-hidden text-[11px] tabular-nums" />
+    </td>
+    <td class="py-2 px-3 align-top">
+      <input type="text" value="${escapeHtml(sub.originalText || '')}" data-id="${sub.id}" class="sub-original-text-input w-full bg-transparent hover:bg-slate-800/60 focus:bg-slate-800 focus:border-indigo-500/60 border border-transparent rounded px-2 py-1 outline-hidden text-slate-200 transition text-xs placeholder:text-slate-600" placeholder="Original speech..." />
+      ${
+        hasEnglishPivot(sub)
+          ? `<div class="mt-1 flex items-start gap-1.5 px-1" title="English Pivot (Step 1): ${escapeHtml(sub.englishText)}">
+              <span class="shrink-0 mt-[1px] text-[9px] font-bold font-mono px-1 py-0.5 rounded bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 leading-none">EN</span>
+              <textarea rows="1" data-id="${sub.id}" class="sub-english-text-input flex-1 min-w-0 bg-transparent hover:bg-slate-800/60 focus:bg-slate-800 focus:border-cyan-500/60 border border-transparent rounded px-1.5 py-0.5 outline-hidden text-cyan-300/90 transition text-[11px] leading-snug resize-none overflow-hidden block placeholder:text-slate-600" placeholder="English pivot...">${escapeHtml(sub.englishText)}</textarea>
+            </div>`
+          : ''
+      }
+    </td>
+    <td class="py-2 px-3 font-khmer text-slate-100 text-sm">
+      <textarea rows="1" data-id="${sub.id}" class="sub-text-input w-full bg-transparent hover:bg-slate-800/60 focus:bg-slate-800 focus:border-indigo-500 border border-transparent rounded px-2 py-1 outline-hidden font-khmer transition text-sm resize-none overflow-hidden leading-relaxed block" placeholder="បញ្ចូលអត្ថបទបកប្រែខ្មែរ..." title="${escapeHtml(sub.khmerText || '')}">${escapeHtml(sub.khmerText || '')}</textarea>
+    </td>
+    <td class="py-2 px-3 w-40">
+      <div class="relative">
+        <select data-id="${sub.id}" class="sub-voice-select w-full bg-[#131a2c] hover:bg-slate-800 border border-slate-700/80 text-slate-200 text-xs rounded-lg px-2.5 py-1.5 appearance-none cursor-pointer pr-6 focus:border-indigo-500 outline-hidden">
+          <optgroup label="Default (Edge TTS)">
+            <option value="Piseth (Male)" ${(!sub.voice || sub.voice.includes('Piseth') || (sub.voice.includes('Male') && !sub.voice.includes('RVC'))) ? 'selected' : ''}>👨 Piseth (Male)</option>
+            <option value="Sreymom (Female)" ${(sub.voice && sub.voice.includes('Female') && !sub.voice.includes('RVC')) ? 'selected' : ''}>👩 Sreymom (Female)</option>
+          </optgroup>
+          ${(state.rvcModels && state.rvcModels.length > 0) ? `
+            <optgroup label="🎭 Character Voices (RVC)">
+              ${state.rvcModels.map(m => `
+                <option value="${m.id}" ${sub.voice === m.id || sub.voice === m.name || sub.voice === `🎭 ${m.name} (RVC)` ? 'selected' : ''}>🎭 ${escapeHtml(m.name)}</option>
+              `).join('')}
+            </optgroup>
+          ` : ''}
+        </select>
+        <svg class="w-3.5 h-3.5 text-slate-400 absolute right-2 top-2.5 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+      </div>
+    </td>
+    <td class="py-2 px-3 w-28 text-center">
+      ${
+        isReady
+          ? `
+          <div class="inline-flex items-center gap-1.5">
+            <button onclick="window.playVoice('${sub.id}')"
+              title="ចុចដើម្បីស្តាប់សំឡេង AI (${sub.voice}${sub.speedApplied > 1.04 ? ' | ល្បឿន ' + sub.speedApplied + 'x' : ''})"
+              class="sub-voice-play-btn inline-flex items-center justify-center gap-1.5 px-2.5 py-1 rounded-lg ${
+                isPlaying
+                  ? 'bg-emerald-600 text-white shadow-md shadow-emerald-500/30 ring-1 ring-emerald-400'
+                  : 'bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/40 text-emerald-400 hover:text-emerald-300'
+              } font-medium text-xs transition active:scale-95 cursor-pointer">
+              ${isPlaying ? PAUSE_ICON_SVG : PLAY_ICON_SVG}
+              <span class="text-[11px] font-mono font-bold">${isPlaying ? 'Playing' : 'Play'}</span>
+            </button>
+            ${
+              sub.speedApplied && sub.speedApplied > 1.04
+                ? `<span class="text-[10px] font-mono px-1.5 py-0.5 rounded bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 font-bold" title="Auto-Speed: បានបង្កើនល្បឿន ${sub.speedApplied}x ដើម្បីតម្រូវតាមពេលវេលា Start/End">⚡${sub.speedApplied}x</span>`
+                : `<span class="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-800/90 text-slate-400 border border-slate-700/50" title="ល្បឿនធម្មជាតិ: 1.0x">1.0x</span>`
+            }
+          </div>
+          `
+          : isModified
+          ? `
+          <div class="inline-flex items-center gap-1.5">
+            <button onclick="window.playVoice('${sub.id}')"
+              title="អត្ថបទត្រូវបានកែប្រែ (សូមចុច Re-Generate Voice ខាងក្រោម)"
+              class="sub-voice-play-btn inline-flex items-center justify-center gap-1.5 px-2.5 py-1 rounded-lg ${
+                isPlaying
+                  ? 'bg-amber-600 text-white shadow-md shadow-amber-500/30 ring-1 ring-amber-400'
+                  : 'bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/40 text-amber-400 hover:text-amber-300'
+              } font-medium text-xs transition active:scale-95 cursor-pointer">
+              ${isPlaying ? PAUSE_ICON_SVG : PLAY_ICON_SVG}
+              <span class="text-[11px] font-mono font-bold">${isPlaying ? 'Playing' : 'Play'}</span>
+            </button>
+            ${
+              sub.speedApplied && sub.speedApplied > 1.04
+                ? `<span class="text-[10px] font-mono px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30 font-bold" title="Auto-Speed: ${sub.speedApplied}x">⚡${sub.speedApplied}x</span>`
+                : `<span class="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-800/90 text-slate-400 border border-slate-700/50" title="ល្បឿនធម្មជាតិ: 1.0x">1.0x</span>`
+            }
+          </div>
+          `
+          : `
+          <div title="មិនទាន់មានសំឡេង (សូមចុច Generate Voice ខាងក្រោម)"
+            class="inline-flex items-center justify-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-800/40 border border-slate-700/40 text-slate-500 opacity-40 cursor-not-allowed select-none">
+            ${PLAY_ICON_SVG}
+            <span class="text-[11px] font-medium text-slate-500">Pending</span>
+          </div>
+          `
+      }
+    </td>
+  `;
+  return tr;
+}
+
 export function renderSubtitleTable() {
   const tbody = document.getElementById('subtitle-table-body');
   if (!tbody) return;
+
+  // Cancel any in-flight chunked render animation
+  if (renderSubtitleTable._animId && typeof cancelAnimationFrame === 'function') {
+    cancelAnimationFrame(renderSubtitleTable._animId);
+    renderSubtitleTable._animId = null;
+  }
 
   tbody.innerHTML = '';
 
@@ -232,197 +348,76 @@ export function renderSubtitleTable() {
       </td>
     `;
     tbody.appendChild(emptyRow);
-    if (window.lucide) window.lucide.createIcons();
     return;
   }
 
-  state.subtitles.forEach((sub, idx) => {
-    const tr = document.createElement('tr');
-    tr.className = `group hover:bg-slate-800/40 transition-colors ${sub.selected ? 'bg-indigo-950/20' : ''}`;
-    tr.dataset.id = sub.id;
+  ensureDelegatedTableListeners(tbody);
 
-    const isModified = sub.status === 'Modified' || sub.needsRegenerate;
-    const isReady = (sub.status === 'Ready' || sub.audioUrl) && !isModified;
+  const subs = state.subtitles;
+  const total = subs.length;
+  // Render first 50 rows immediately (< 15ms)
+  const INITIAL_BATCH = Math.min(total, 50);
+  const CHUNK_SIZE = 80;
 
-    tr.innerHTML = `
-      <td class="py-2.5 px-3 text-center">
-        <input type="checkbox" ${sub.selected ? 'checked' : ''} data-id="${sub.id}" class="sub-row-check rounded border-slate-700 bg-slate-800 text-indigo-600 focus:ring-0 focus:ring-offset-0 cursor-pointer" />
-      </td>
-      <td class="py-2 px-1.5 font-mono text-slate-300 text-[11px] w-[68px] min-w-[68px]">
-        <input type="text" value="${sub.start}" data-field="start" data-id="${sub.id}" class="sub-time-input bg-transparent hover:bg-slate-800/80 focus:bg-slate-800 focus:border-indigo-500 border border-transparent rounded px-1 py-1 w-full font-mono outline-hidden text-[11px] tabular-nums" />
-      </td>
-      <td class="py-2 px-1.5 font-mono text-slate-300 text-[11px] w-[68px] min-w-[68px]">
-        <input type="text" value="${sub.end}" data-field="end" data-id="${sub.id}" class="sub-time-input bg-transparent hover:bg-slate-800/80 focus:bg-slate-800 focus:border-indigo-500 border border-transparent rounded px-1 py-1 w-full font-mono outline-hidden text-[11px] tabular-nums" />
-      </td>
-      <td class="py-2 px-3 align-top">
-        <input type="text" value="${escapeHtml(sub.originalText || '')}" data-id="${sub.id}" class="sub-original-text-input w-full bg-transparent hover:bg-slate-800/60 focus:bg-slate-800 focus:border-indigo-500/60 border border-transparent rounded px-2 py-1 outline-hidden text-slate-200 transition text-xs placeholder:text-slate-600" placeholder="Original speech..." />
-        ${
-          // Show the English pivot ONLY when it is a genuinely different text.
-          // A direct Chinese -> Khmer translation mirrors originalText into
-          // englishText purely as bookkeeping, and must not surface a line here.
-          hasEnglishPivot(sub)
-            ? `<div class="mt-1 flex items-start gap-1.5 px-1" title="English Pivot (Step 1): ${escapeHtml(sub.englishText)}">
-                <span class="shrink-0 mt-[1px] text-[9px] font-bold font-mono px-1 py-0.5 rounded bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 leading-none">EN</span>
-                <textarea rows="1" data-id="${sub.id}" class="sub-english-text-input flex-1 min-w-0 bg-transparent hover:bg-slate-800/60 focus:bg-slate-800 focus:border-cyan-500/60 border border-transparent rounded px-1.5 py-0.5 outline-hidden text-cyan-300/90 transition text-[11px] leading-snug resize-none overflow-hidden block placeholder:text-slate-600" placeholder="English pivot...">${escapeHtml(sub.englishText)}</textarea>
-              </div>`
-            : ''
-        }
-      </td>
-      <td class="py-2 px-3 font-khmer text-slate-100 text-sm">
-        <textarea rows="1" data-id="${sub.id}" class="sub-text-input w-full bg-transparent hover:bg-slate-800/60 focus:bg-slate-800 focus:border-indigo-500 border border-transparent rounded px-2 py-1 outline-hidden font-khmer transition text-sm resize-none overflow-hidden leading-relaxed block" placeholder="បញ្ចូលអត្ថបទបកប្រែខ្មែរ..." title="${escapeHtml(sub.khmerText || '')}">${escapeHtml(sub.khmerText || '')}</textarea>
-      </td>
-      <td class="py-2 px-3 w-40">
-        <div class="relative">
-          <select data-id="${sub.id}" class="sub-voice-select w-full bg-[#131a2c] hover:bg-slate-800 border border-slate-700/80 text-slate-200 text-xs rounded-lg px-2.5 py-1.5 appearance-none cursor-pointer pr-6 focus:border-indigo-500 outline-hidden">
-            <optgroup label="Default (Edge TTS)">
-              <option value="Piseth (Male)" ${(!sub.voice || sub.voice.includes('Piseth') || (sub.voice.includes('Male') && !sub.voice.includes('RVC'))) ? 'selected' : ''}>👨 Piseth (Male)</option>
-              <option value="Sreymom (Female)" ${(sub.voice && sub.voice.includes('Female') && !sub.voice.includes('RVC')) ? 'selected' : ''}>👩 Sreymom (Female)</option>
-            </optgroup>
-            ${(state.rvcModels && state.rvcModels.length > 0) ? `
-              <optgroup label="🎭 Character Voices (RVC)">
-                ${state.rvcModels.map(m => `
-                  <option value="${m.id}" ${sub.voice === m.id || sub.voice === m.name || sub.voice === `🎭 ${m.name} (RVC)` ? 'selected' : ''}>🎭 ${escapeHtml(m.name)}</option>
-                `).join('')}
-              </optgroup>
-            ` : ''}
-          </select>
-          <svg class="w-3.5 h-3.5 text-slate-400 absolute right-2 top-2.5 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
-        </div>
-      </td>
-      <td class="py-2 px-3 w-28 text-center">
-        ${
-          isReady
-            ? `
-            <div class="inline-flex items-center gap-1.5">
-              <button onclick="window.playVoice('${sub.id}')"
-                title="ចុចដើម្បីស្តាប់សំឡេង AI (${sub.voice}${sub.speedApplied > 1.04 ? ' | ល្បឿន ' + sub.speedApplied + 'x' : ''})"
-                class="sub-voice-play-btn inline-flex items-center justify-center gap-1.5 px-2.5 py-1 rounded-lg ${
-                  currentPlayingSubId === sub.id
-                    ? 'bg-emerald-600 text-white shadow-md shadow-emerald-500/30 ring-1 ring-emerald-400'
-                    : 'bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/40 text-emerald-400 hover:text-emerald-300'
-                } font-medium text-xs transition active:scale-95 cursor-pointer">
-                <i data-lucide="${currentPlayingSubId === sub.id ? 'pause' : 'volume-2'}" class="w-3.5 h-3.5 ${currentPlayingSubId === sub.id ? 'animate-bounce' : ''}"></i>
-                <span class="text-[11px] font-mono font-bold">${currentPlayingSubId === sub.id ? 'Playing' : 'Play'}</span>
-              </button>
-              ${
-                sub.speedApplied && sub.speedApplied > 1.04
-                  ? `<span class="text-[10px] font-mono px-1 py-0.5 rounded bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 font-bold" title="Auto-Speed: បានបង្កើនល្បឿន ${sub.speedApplied}x ដើម្បីតម្រូវតាមពេលវេលា Start/End">⚡${sub.speedApplied}x</span>`
-                  : ''
-              }
-            </div>
-            `
-            : isModified
-            ? `
-            <div class="inline-flex items-center gap-1.5">
-              <button onclick="window.playVoice('${sub.id}')"
-                title="អត្ថបទត្រូវបានកែប្រែ (សូមចុច Re-Generate Voice ខាងក្រោម)"
-                class="sub-voice-play-btn inline-flex items-center justify-center gap-1.5 px-2.5 py-1 rounded-lg ${
-                  currentPlayingSubId === sub.id
-                    ? 'bg-amber-600 text-white shadow-md shadow-amber-500/30 ring-1 ring-amber-400'
-                    : 'bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/40 text-amber-400 hover:text-amber-300'
-                } font-medium text-xs transition active:scale-95 cursor-pointer">
-                <i data-lucide="${currentPlayingSubId === sub.id ? 'pause' : 'volume-2'}" class="w-3.5 h-3.5 ${currentPlayingSubId === sub.id ? 'animate-bounce' : 'text-amber-400'}"></i>
-                <span class="text-[11px] font-mono font-bold">${currentPlayingSubId === sub.id ? 'Playing' : 'Play'}</span>
-              </button>
-              ${
-                sub.speedApplied && sub.speedApplied > 1.04
-                  ? `<span class="text-[10px] font-mono px-1 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30 font-bold" title="Auto-Speed: ${sub.speedApplied}x">⚡${sub.speedApplied}x</span>`
-                  : ''
-              }
-            </div>
-            `
-            : `
-            <div title="មិនទាន់មានសំឡេង (សូមចុច Generate Voice ខាងក្រោម)"
-              class="inline-flex items-center justify-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-800/40 border border-slate-700/40 text-slate-500 opacity-40 cursor-not-allowed select-none">
-              <i data-lucide="volume-2" class="w-3.5 h-3.5 text-slate-500"></i>
-              <span class="text-[11px] font-medium text-slate-500">Pending</span>
-            </div>
-            `
-        }
-      </td>
-    `;
-    tbody.appendChild(tr);
-  });
+  const frag = document.createDocumentFragment();
+  for (let i = 0; i < INITIAL_BATCH; i++) {
+    frag.appendChild(createSubtitleRowElement(subs[i], i));
+  }
+  tbody.appendChild(frag);
 
-  attachTableEventListeners();
-  document.querySelectorAll('.sub-text-input, .sub-english-text-input').forEach(ta => autoResizeTextarea(ta));
-  if (window.lucide) window.lucide.createIcons();
+  // Progressive background streaming of remaining rows to guarantee 60 FPS
+  if (total > INITIAL_BATCH && typeof requestAnimationFrame === 'function') {
+    let currentIdx = INITIAL_BATCH;
+    function renderNextChunk() {
+      const nextFrag = document.createDocumentFragment();
+      const end = Math.min(total, currentIdx + CHUNK_SIZE);
+      for (let i = currentIdx; i < end; i++) {
+        nextFrag.appendChild(createSubtitleRowElement(subs[i], i));
+      }
+      tbody.appendChild(nextFrag);
+      currentIdx = end;
+      if (currentIdx < total) {
+        renderSubtitleTable._animId = requestAnimationFrame(renderNextChunk);
+      } else {
+        renderSubtitleTable._animId = null;
+      }
+    }
+    renderSubtitleTable._animId = requestAnimationFrame(renderNextChunk);
+  }
 }
 
-function attachTableEventListeners() {
-  // Checkbox select
-  document.querySelectorAll('.sub-row-check').forEach(cb => {
-    cb.onchange = (e) => {
-      const id = e.target.getAttribute('data-id');
-      const sub = state.subtitles.find(s => s.id === id);
-      if (sub) {
-        sub.selected = e.target.checked;
-        const row = e.target.closest('tr');
-        if (row) row.classList.toggle('bg-indigo-950/20', sub.selected);
-        state.emit('subtitlesChanged', state.subtitles);
-      }
-    };
-  });
+export function ensureDelegatedTableListeners(tbody) {
+  if (!tbody || tbody._delegated) return;
+  tbody._delegated = true;
 
-  // Time Inputs
-  document.querySelectorAll('.sub-time-input').forEach(input => {
-    input.onchange = (e) => {
-      const id = e.target.getAttribute('data-id');
-      const field = e.target.getAttribute('data-field');
-      const val = e.target.value.trim();
-      const sub = state.subtitles.find(s => s.id === id);
-      if (!sub) return;
+  // 1. Delegated Change (Checkboxes, Timecode Inputs, Voice Dropdowns)
+  tbody.addEventListener('change', (e) => {
+    const target = e.target;
+    const id = target.getAttribute('data-id');
+    if (!id) return;
+    const sub = state.subtitles.find(s => s.id === id);
+    if (!sub) return;
 
+    if (target.matches('.sub-row-check')) {
+      sub.selected = target.checked;
+      const row = target.closest('tr');
+      if (row) row.classList.toggle('bg-indigo-950/20', sub.selected);
+      state.emit('subtitlesChanged', state.subtitles);
+    } else if (target.matches('.sub-time-input')) {
+      const field = target.getAttribute('data-field');
+      const val = target.value.trim();
       const seconds = parseTimecodeSRT(val);
       sub[field] = formatTimecodeSRT(seconds);
-      e.target.value = sub[field];
+      target.value = sub[field];
 
       if (field === 'start') sub.startSec = seconds;
       if (field === 'end') sub.endSec = seconds;
 
       state.emit('subtitlesChanged', state.subtitles);
-    };
-  });
-
-  // Original text inputs
-  document.querySelectorAll('.sub-original-text-input').forEach(input => {
-    input.oninput = (e) => {
-      const id = e.target.getAttribute('data-id');
-      const sub = state.subtitles.find(s => s.id === id);
-      if (sub) {
-        sub.originalText = e.target.value;
-        state.emit('subtitlesChanged', state.subtitles);
-      }
-    };
-  });
-
-  // English pivot inputs (Step 1 output, editable so it can be re-run into Khmer)
-  document.querySelectorAll('.sub-english-text-input').forEach(input => {
-    input.oninput = (e) => {
-      autoResizeTextarea(e.target);
-      const id = e.target.getAttribute('data-id');
-      const sub = state.subtitles.find(s => s.id === id);
-      if (sub) {
-        sub.englishText = e.target.value;
-        state.emit('subtitlesChanged', state.subtitles);
-      }
-    };
-  });
-
-  // Khmer text inputs: Auto-Check row & Turn sound icon to Yellow on change
-  document.querySelectorAll('.sub-text-input').forEach(input => {
-    input.oninput = (e) => {
-      autoResizeTextarea(e.target);
-      e.target.title = e.target.value;
-      const id = e.target.getAttribute('data-id');
-      const sub = state.subtitles.find(s => s.id === id);
-      if (sub) {
-        sub.khmerText = e.target.value;
-
-        // Auto-check this row
+    } else if (target.matches('.sub-voice-select')) {
+      if (sub.voice !== target.value) {
+        sub.voice = target.value;
         sub.selected = true;
-
-        // If row was Ready or has generated audio, mark as Modified (yellow sound)
         if (sub.status === 'Ready' || sub.audioUrl) {
           sub.status = 'Modified';
           sub.needsRegenerate = true;
@@ -430,62 +425,80 @@ function attachTableEventListeners() {
             sub.oldAudioUrl = sub.audioUrl;
           }
         }
-
-        // Live update DOM row without full re-render (preserves input focus!)
-        const row = e.target.closest('tr');
-        if (row) {
-          row.classList.add('bg-indigo-950/20');
-          const cb = row.querySelector('.sub-row-check');
-          if (cb) cb.checked = true;
-
-          // Turn sound button to yellow if modified
-          if (sub.status === 'Modified') {
-            const soundTd = row.querySelector('td:last-child');
-            if (soundTd && !soundTd.querySelector('.text-amber-400')) {
-              soundTd.innerHTML = `
-                <button onclick="window.playVoice('${sub.id}')"
-                  title="អត្ថបទត្រូវបានកែប្រែ (សូមចុច Re-Generate Voice ខាងក្រោម)"
-                  class="sub-voice-play-btn inline-flex items-center justify-center gap-1.5 px-3 py-1 rounded-lg bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/40 text-amber-400 hover:text-amber-300 font-medium text-xs transition active:scale-95 cursor-pointer">
-                  <i data-lucide="volume-2" class="w-3.5 h-3.5 text-amber-400"></i>
-                  <span class="text-[11px] font-mono font-bold">Play</span>
-                </button>
-              `;
-              if (window.lucide) window.lucide.createIcons();
-            }
-          }
-        }
-
-        state.emit('activeSubtitleUpdate', state.currentTime);
+        renderSubtitleTable();
         state.emit('subtitlesChanged', state.subtitles);
+        window.showToast?.(`បានប្តូរសំឡេងទៅជា ${sub.voice}`);
       }
-    };
+    }
   });
 
-  // Voice dropdown: Auto-check and turn sound to yellow if modified
-  document.querySelectorAll('.sub-voice-select').forEach(sel => {
-    sel.onchange = (e) => {
-      const id = e.target.getAttribute('data-id');
-      const sub = state.subtitles.find(s => s.id === id);
-      if (sub) {
-        if (sub.voice !== e.target.value) {
-          sub.voice = e.target.value;
-          sub.selected = true;
-          if (sub.status === 'Ready' || sub.audioUrl) {
-            sub.status = 'Modified';
-            sub.needsRegenerate = true;
-            if (!sub.oldAudioUrl && sub.audioUrl) {
-              sub.oldAudioUrl = sub.audioUrl;
-            }
-          }
-          renderSubtitleTable();
-          state.emit('subtitlesChanged', state.subtitles);
-          window.showToast?.(`បានប្តូរសំឡេងទៅជា ${sub.voice}`);
+  // 2. Delegated Input (Original text, English pivot, Khmer translation)
+  tbody.addEventListener('input', (e) => {
+    const target = e.target;
+    const id = target.getAttribute('data-id');
+    if (!id) return;
+    const sub = state.subtitles.find(s => s.id === id);
+    if (!sub) return;
+
+    if (target.matches('.sub-original-text-input')) {
+      sub.originalText = target.value;
+      state.emit('subtitlesChanged', state.subtitles);
+    } else if (target.matches('.sub-english-text-input')) {
+      autoResizeTextarea(target);
+      sub.englishText = target.value;
+      state.emit('subtitlesChanged', state.subtitles);
+    } else if (target.matches('.sub-text-input')) {
+      autoResizeTextarea(target);
+      target.title = target.value;
+      sub.khmerText = target.value;
+      sub.selected = true;
+
+      if (sub.status === 'Ready' || sub.audioUrl) {
+        sub.status = 'Modified';
+        sub.needsRegenerate = true;
+        if (!sub.oldAudioUrl && sub.audioUrl) {
+          sub.oldAudioUrl = sub.audioUrl;
         }
       }
-    };
+
+      const row = target.closest('tr');
+      if (row) {
+        row.classList.add('bg-indigo-950/20');
+        const cb = row.querySelector('.sub-row-check');
+        if (cb) cb.checked = true;
+
+        if (sub.status === 'Modified') {
+          const soundTd = row.querySelector('td:last-child');
+          if (soundTd && !soundTd.querySelector('.text-amber-400')) {
+            soundTd.innerHTML = `
+              <button onclick="window.playVoice('${sub.id}')"
+                title="អត្ថបទត្រូវបានកែប្រែ (សូមចុច Re-Generate Voice ខាងក្រោម)"
+                class="sub-voice-play-btn inline-flex items-center justify-center gap-1.5 px-3 py-1 rounded-lg bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/40 text-amber-400 hover:text-amber-300 font-medium text-xs transition active:scale-95 cursor-pointer">
+                ${PLAY_ICON_SVG}
+                <span class="text-[11px] font-mono font-bold">Play</span>
+              </button>
+            `;
+          }
+        }
+      }
+
+      state.emit('activeSubtitleUpdate', state.currentTime);
+      state.emit('subtitlesChanged', state.subtitles);
+    }
+  });
+
+  // 3. Lazy focus auto-resize
+  tbody.addEventListener('focusin', (e) => {
+    if (e.target.matches('.sub-text-input, .sub-english-text-input')) {
+      autoResizeTextarea(e.target);
+    }
   });
 }
 
+function attachTableEventListeners() {
+  const tbody = document.getElementById('subtitle-table-body');
+  if (tbody) ensureDelegatedTableListeners(tbody);
+}
 export function addNewSubtitleRow() {
   const last = state.subtitles[state.subtitles.length - 1];
   const startSec = last ? last.endSec + 0.5 : 0;
@@ -1189,6 +1202,17 @@ export function toggleSubtitleFullscreen() {
   }
 }
 
+const MINIMIZE_ICON_SVG = '<svg class="w-3.5 h-3.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 14h6m0 0v6m0-6L3 21m17-7h-6m0 0v6m0-6l7 7M4 10h6m0 0V4m0 6L3 3m17 7h-6m0 0V4m0 6l7-7"/></svg>';
+const MAXIMIZE_ICON_SVG = '<svg class="w-3.5 h-3.5 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 3h6m0 0v6m0-6L14 10M9 21H3m0 0v-6m0 6l7-7M3 9V3m0 0h6m-6 0l7 7m14 5v6m0 0h-6m6 0l-7-7"/></svg>';
+
+function setFullscreenButtonIcon(isEnter) {
+  const btnIcon = document.getElementById('fullscreen-icon');
+  const svg = isEnter ? MINIMIZE_ICON_SVG : MAXIMIZE_ICON_SVG;
+  if (btnIcon) {
+    btnIcon.outerHTML = `<span id="fullscreen-icon" class="inline-flex items-center">${svg}</span>`;
+  }
+}
+
 export function enterSubtitleFullscreen() {
   const section = document.getElementById('subtitle-section');
   if (!section) return;
@@ -1196,13 +1220,11 @@ export function enterSubtitleFullscreen() {
   section.classList.add('subtitle-fullscreen-active');
   document.body.classList.add('subtitle-is-fullscreen');
 
-  const btnIcon = document.getElementById('fullscreen-icon');
+  setFullscreenButtonIcon(true);
+
   const btnText = document.getElementById('fullscreen-text');
   const btn = document.getElementById('btn-toggle-fullscreen');
 
-  if (btnIcon) {
-    btnIcon.setAttribute('data-lucide', 'minimize-2');
-  }
   if (btnText) {
     btnText.textContent = 'Exit';
   }
@@ -1211,15 +1233,6 @@ export function enterSubtitleFullscreen() {
     btn.classList.add('bg-indigo-600', 'text-white', 'border-indigo-400');
     btn.classList.remove('bg-slate-800', 'text-indigo-300');
   }
-
-  if (window.lucide && typeof window.lucide.createIcons === 'function') {
-    window.lucide.createIcons();
-  }
-
-  // Adjust all auto-resizing textareas in fullscreen mode
-  setTimeout(() => {
-    document.querySelectorAll('.sub-text-input').forEach(ta => autoResizeTextarea(ta));
-  }, 50);
 }
 
 export function exitSubtitleFullscreen() {
@@ -1229,13 +1242,11 @@ export function exitSubtitleFullscreen() {
   section.classList.remove('subtitle-fullscreen-active');
   document.body.classList.remove('subtitle-is-fullscreen');
 
-  const btnIcon = document.getElementById('fullscreen-icon');
+  setFullscreenButtonIcon(false);
+
   const btnText = document.getElementById('fullscreen-text');
   const btn = document.getElementById('btn-toggle-fullscreen');
 
-  if (btnIcon) {
-    btnIcon.setAttribute('data-lucide', 'maximize-2');
-  }
   if (btnText) {
     btnText.textContent = 'Fullscreen';
   }
@@ -1244,25 +1255,10 @@ export function exitSubtitleFullscreen() {
     btn.classList.remove('bg-indigo-600', 'text-white', 'border-indigo-400');
     btn.classList.add('bg-slate-800', 'text-indigo-300');
   }
-
-  if (window.lucide && typeof window.lucide.createIcons === 'function') {
-    window.lucide.createIcons();
-  }
-
-  // Adjust all auto-resizing textareas on exit
-  setTimeout(() => {
-    document.querySelectorAll('.sub-text-input').forEach(ta => autoResizeTextarea(ta));
-  }, 50);
 }
 
-// Window resize listener to keep textareas fitted
+// Global window registrations
 if (typeof window !== 'undefined') {
-  if (typeof window.addEventListener === 'function') {
-    window.addEventListener('resize', () => {
-      document.querySelectorAll('.sub-text-input').forEach(ta => autoResizeTextarea(ta));
-    });
-  }
-
   // Expose to window for global HTML access
   window.playVoice = playVoice;
   window.stopVoicePlayback = stopVoicePlayback;

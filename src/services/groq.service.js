@@ -3,6 +3,7 @@ const path = require('path');
 const os = require('os');
 const { spawnSync } = require('child_process');
 const { formatTerminalLog, formatTerminalProgress } = require('../utils/terminal-logger');
+const groqKeyManager = require('./groq-key-manager.service');
 
 /**
  * Format numeric seconds into standard SRT timestamp (00:00:01,234)
@@ -29,6 +30,22 @@ function processRawSegments(segments = [], words = [], options = {}) {
   const maxMergeLimit = parseInt(options.maxMergeLimit ?? 3, 10);
   const punctMarks = ['.', '?', '!', ',', '，', '。', '！', '？', '、', ';', '；', ':', '：', '\n'];
   const noiseWords = new Set(['um', 'uh', 'ah', 'er', 'mm', 'hmm', '啊', '嗯', '哦', '呃']);
+
+  // Case 0: Freeze Mode (maxMergeLimit <= 1)
+  // Completely bypass punctuation sub-splitting and merging to preserve 100% pure Groq Whisper native segments
+  if (maxMergeLimit <= 1 && Array.isArray(segments) && segments.length > 0) {
+    return segments
+      .filter(seg => (seg.text || '').trim().length > 0)
+      .map(seg => {
+        const segStart = typeof seg.start === 'number' ? seg.start : 0;
+        const segEnd = typeof seg.end === 'number' ? seg.end : segStart + 1;
+        return {
+          startSec: segStart,
+          endSec: segEnd,
+          text: (seg.text || '').trim()
+        };
+      });
+  }
 
   // Case A: Groq returned natural Whisper speech segments (Primary Path - exactly like Faster-Whisper)
   if (Array.isArray(segments) && segments.length > 0) {
@@ -320,27 +337,71 @@ class GroqService {
       formData.append('language', options.language);
     }
 
-    const startTime = Date.now();
+    const configuredKeys = groqKeyManager.getConfiguredKeys(rawApiKey);
+    if (configuredKeys.length === 0) {
+      throw new Error('សូមបញ្ចូល Groq API Key នៅក្នុង Settings ឬក្នុង .env ជាមុនសិន (Groq API Key is required)');
+    }
+
     const endpoint = 'https://api.groq.com/openai/v1/audio/transcriptions';
+    let lastError = null;
+    let json = null;
+    let elapsed = '0.0';
+    let attempts = 0;
+    const maxAttempts = configuredKeys.length;
 
-    let response;
     try {
-      try {
-        response = await fetch(endpoint, {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${rawApiKey}`
-          },
-          body: formData
+      while (attempts < maxAttempts) {
+        attempts++;
+        let activeKeyObj;
+        try {
+          activeKeyObj = groqKeyManager.getActiveKey(rawApiKey);
+        } catch (poolErr) {
+          throw poolErr;
+        }
+
+        const currentKey = activeKeyObj.key;
+        const keyId = activeKeyObj.id;
+
+        formatTerminalProgress('STT:PROGRESS', 1, 3, `Uploading audio to Groq Whisper Cloud [${modelName}] with Key [${keyId}] (${activeKeyObj.index + 1}/${activeKeyObj.totalConfigured})...`, {
+          file: path.basename(effectiveAudioPath),
+          model: modelName,
+          key: keyId
         });
-      } catch (networkErr) {
-        formatTerminalLog('GROQ:FAIL', `Network failure calling Groq API: ${networkErr.message}`);
-        throw new Error(`បរាជ័យក្នុងការតភ្ជាប់ទៅកាន់ Groq API (${networkErr.message})`);
-      }
 
-      const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+        formatTerminalLog('GROQ:START', `Invoking Groq STT [${modelName}] (${effectiveMb} MB) with Key [${keyId}] (${activeKeyObj.index + 1}/${activeKeyObj.totalConfigured})...`, {
+          file: path.basename(effectiveAudioPath),
+          model: modelName,
+          key: keyId
+        });
 
-      if (!response.ok) {
+        const startTime = Date.now();
+        let response;
+        try {
+          response = await fetch(endpoint, {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${currentKey}`
+            },
+            body: formData
+          });
+        } catch (networkErr) {
+          formatTerminalLog('GROQ:FAIL', `Network failure calling Groq API: ${networkErr.message}`);
+          throw new Error(`បរាជ័យក្នុងការតភ្ជាប់ទៅកាន់ Groq API (${networkErr.message})`);
+        }
+
+        elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+
+        if (response.ok) {
+          groqKeyManager.markSuccess(currentKey);
+          json = await response.json();
+          formatTerminalProgress('STT:PROGRESS', 2, 3, `Groq API responded in ${elapsed}s. Aligning Khmer dubbing clauses...`, {
+            elapsed: `${elapsed}s`,
+            key: keyId
+          });
+          break; // Successfully got response!
+        }
+
+        // Handle Errors & Auto-Failover
         let errDetails = '';
         try {
           const errJson = await response.json();
@@ -349,18 +410,28 @@ class GroqService {
           errDetails = await response.text();
         }
 
-        formatTerminalLog('GROQ:ERROR', `Groq API returned HTTP ${response.status}: ${errDetails}`);
+        formatTerminalLog('GROQ:ERROR', `Groq API returned HTTP ${response.status} with Key [${keyId}]: ${errDetails}`);
 
-        if (response.status === 401 || errDetails.includes('Invalid API Key') || errDetails.includes('Authentication')) {
-          throw new Error('Groq API Key មិនត្រឹមត្រូវ (Invalid API Key)។ សូមពិនិត្យមើលក្នុង Settings ម្ដងទៀត។');
-        } else if (response.status === 429) {
-          throw new Error('Groq API Rate Limit ឬអស់កូតាប្រចាំថ្ងៃ។ សូមរង់ចាំមួយភ្លែត ឬប្ដូរប្រើ Faster-Whisper Offline។');
+        if (response.status === 429) {
+          groqKeyManager.markRateLimited(currentKey, errDetails);
+          const waitMatch = errDetails.match(/try again in ([0-9]+m[0-9.]+s|[0-9.]+s|[0-9]+m)/i);
+          const waitStr = waitMatch ? waitMatch[1] : '~10 នាទី';
+          formatTerminalLog('GROQ:FAILOVER', `⚠️ Key [${keyId}] ជាប់ Rate Limit (429 ASPH)។ កំពុងប្ដូរទៅ Key បន្ទាប់ដោយស្វ័យប្រវត្តិ... (Cooldown: ${waitStr})`);
+          lastError = new Error(`Groq API Rate Limit ឬអស់កូតា (HTTP 429): ${errDetails}`);
+          continue; // Seamless failover to next key in loop!
+        } else if (response.status === 401 || errDetails.includes('Invalid API Key') || errDetails.includes('Authentication')) {
+          groqKeyManager.markDenied(currentKey, errDetails);
+          formatTerminalLog('GROQ:DENIED', `❌ Key [${keyId}] មិនត្រឹមត្រូវ (Invalid API Key)។ កំពុងប្ដូរទៅ Key បន្ទាប់...`);
+          lastError = new Error(`Groq API Key [${keyId}] មិនត្រឹមត្រូវ (Invalid API Key)`);
+          continue;
         } else {
           throw new Error(`Groq Transcription បរាជ័យ (${response.status}): ${errDetails}`);
         }
       }
 
-      const json = await response.json();
+      if (!json) {
+        throw lastError || new Error(`រាល់ Groq API Keys ទាំងអស់ (${configuredKeys.length}) មិនអាចប្រើប្រាស់បាននៅពេលនេះឡើយ។`);
+      }
       const detectedLang = json.language || 'unknown';
       const totalDuration = json.duration || 0;
 
@@ -419,4 +490,6 @@ class GroqService {
   }
 }
 
+GroqService.prototype.processRawSegments = processRawSegments;
+GroqService.prototype.keyManager = groqKeyManager;
 module.exports = new GroqService();

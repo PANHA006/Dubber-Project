@@ -57,7 +57,7 @@ class TTSService {
    * @param {Array<{id: string, khmerText: string, voice?: string, pitchShift?: number}>} items
    * @returns {Promise<{success: boolean, count: number, results: Array}>}
    */
-  async generateVoices(items) {
+  async generateVoices(items, onProgress = null) {
     this.ensureStorageDir();
     this.cleanupStaleTempPayloads();
     if (!Array.isArray(items) || items.length === 0) {
@@ -179,6 +179,9 @@ class TTSService {
                 speed: `${data.speed}x`,
                 status: data.status
               });
+              if (typeof onProgress === 'function') {
+                try { onProgress(data); } catch (_) {}
+              }
             } catch (_) {}
           } else if (trimmed) {
             stderr += trimmed + '\n';
@@ -204,6 +207,9 @@ class TTSService {
                 speed: `${data.speed}x`,
                 status: data.status
               });
+              if (typeof onProgress === 'function') {
+                try { onProgress(data); } catch (_) {}
+              }
             } catch (_) {}
           } else {
             stderr += trimmed + '\n';
@@ -217,7 +223,17 @@ class TTSService {
 
         try {
           const parsed = JSON.parse(stdout.trim());
-          formatTerminalLog('TTS:SUCCESS', `Generated ${parsed.results?.length || 0} Khmer voice files into storage/voices/`);
+          const results = Array.isArray(parsed.results) ? parsed.results : [];
+          const validResults = results.filter(r => r && r.success);
+
+          if (validResults.length === 0 && items.length > 0) {
+            const firstErr = results.find(r => r && r.error)?.error || 'All items failed to generate audio';
+            formatTerminalLog('TTS:ERROR', `TTS generation failed for all ${items.length} items: ${firstErr}`);
+            return reject(new Error(`Edge TTS failed to generate voice files: ${firstErr}`));
+          }
+
+          parsed.count = validResults.length;
+          formatTerminalLog('TTS:SUCCESS', `Generated ${validResults.length}/${items.length} Khmer voice files into storage/voices/`);
 
           // Apply RVC conversion for character models if requested
           if (itemRvcMap.size > 0 && Array.isArray(parsed.results)) {

@@ -85,6 +85,19 @@ class DubberController {
       // (Chinese -> Khmer) instead of always bridging through English.
       let detectedLanguage = null;
 
+      const endPadding = req.body?.endPadding !== undefined ? `+${Number(req.body.endPadding).toFixed(2)}s` : '+0.70s';
+      const maxMergeRaw = req.body?.maxMergeLimit !== undefined ? parseInt(req.body.maxMergeLimit, 10) : 3;
+      const maxMergeStr = maxMergeRaw <= 1 ? '1 (Native / Freeze)' : `${maxMergeRaw} ឃ្លា`;
+      const mergeGapStr = req.body?.maxPauseGap !== undefined ? `${Number(req.body.maxPauseGap).toFixed(2)}s` : '0.15s';
+      const vadStr = req.body?.vadThreshold !== undefined ? `${Number(req.body.vadThreshold).toFixed(2)}` : '0.10';
+
+      formatTerminalLog('STT:CONFIG', `Transcription Conditions: EndPadding=${endPadding} | MaxMerged=${maxMergeStr} | MergeGap=${mergeGapStr} | VAD=${vadStr}`, {
+        endPadding,
+        maxMerged: maxMergeStr,
+        mergeGap: mergeGapStr,
+        vadFilter: vadStr
+      });
+
       if (isGroq) {
         // Route to Groq Cloud Whisper API (Ultra-Fast 1-2s)
         const groqApiKey = req.body?.groqApiKey || req.body?.apiKey || process.env.GROQ_API_KEY;
@@ -206,22 +219,62 @@ class DubberController {
   /**
    * Generate Khmer voice audio files using Microsoft Edge TTS
    */
-  async generateVoice(req, res, next) {
+    async generateVoice(req, res, next) {
     try {
       const { items } = req.body || {};
       if (!Array.isArray(items) || items.length === 0) {
         return res.status(400).json({
           success: false,
-          message: 'មិនមានអត្ថបទសម្រាប់ Generate Voice ទេ'
+          message: 'មិនមានទិន្នន័យ Subtitles សម្រាប់ Generate Voice ទេ'
         });
       }
 
       formatTerminalLog('SERVER:TTS', `Received voice generation request for ${items.length} subtitle items`);
+
+      const isStream = req.query.stream === 'true' || req.headers.accept === 'text/event-stream' || req.body?.stream === true;
+
+      if (isStream) {
+        res.setHeader('Content-Type', 'text/event-stream');
+        res.setHeader('Cache-Control', 'no-cache');
+        res.setHeader('Connection', 'keep-alive');
+        if (typeof res.flushHeaders === 'function') {
+          res.flushHeaders();
+        }
+
+        const onProgress = (data) => {
+          try {
+            res.write(`data: ${JSON.stringify({ type: 'progress', ...data })}\n\n`);
+          } catch (_) {}
+        };
+
+        try {
+          const result = await ttsService.generateVoices(items, onProgress);
+          const validResults = (result.results || []).filter(r => r && r.success);
+          res.write(`data: ${JSON.stringify({
+            type: 'done',
+            success: true,
+            count: validResults.length,
+            total: items.length,
+            data: result.results
+          })}\n\n`);
+          res.end();
+        } catch (err) {
+          res.write(`data: ${JSON.stringify({
+            type: 'error',
+            success: false,
+            message: err.message
+          })}\n\n`);
+          res.end();
+        }
+        return;
+      }
+
       const result = await ttsService.generateVoices(items);
 
       res.status(200).json({
         success: true,
         count: result.count,
+        total: items.length,
         data: result.results
       });
     } catch (error) {
@@ -230,9 +283,6 @@ class DubberController {
     }
   }
 
-  /**
-   * Generate finalized dubbed video with mixed Khmer audio and ducked BGM
-   */
   async generateDubbedVideo(req, res, next) {
     try {
       const { videoUrl, subtitles, settings } = req.body || {};

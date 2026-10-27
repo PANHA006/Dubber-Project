@@ -19,7 +19,9 @@ faster-whisper==1.2.1
 av==18.1.0
 
 # Khmer neural text-to-speech (Microsoft Edge voices)
-edge-tts==7.2.8
+edge-tts>=7.3.1
 
 # Bundled FFmpeg binary used by the Python workers
 imageio-ffmpeg==0.6.0
+
+gradio_client>=2.7.0

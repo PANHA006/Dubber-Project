@@ -85,26 +85,34 @@
         </button>
 
         <!-- Dropdown Menu -->
-        <div id="stt-model-dropdown" class="hidden absolute right-0 mt-1.5 w-64 bg-[#0f1424] border border-slate-700/90 rounded-xl shadow-2xl z-50 py-1.5 text-xs text-slate-300">
+        <div id="stt-model-dropdown" class="hidden absolute right-0 mt-1.5 w-72 sm:w-80 bg-[#0f1424] border border-slate-700/90 rounded-xl shadow-2xl z-50 py-1.5 text-xs text-slate-300">
           <div class="px-3 py-1 text-[10px] font-semibold text-slate-400 uppercase tracking-wider border-b border-slate-800/80 flex items-center justify-between">
             <span>💻 Offline (Faster-Whisper $0)</span>
             <span class="text-[9px] text-slate-500">Local CPU</span>
           </div>
           <button onclick="window.selectSttModel('small')" class="w-full text-left px-3 py-1.5 hover:bg-slate-800/80 flex items-center justify-between transition cursor-pointer stt-option" data-model="small">
-            <span>Small / Balanced (Fast CPU)</span>
-            <span class="stt-check hidden text-emerald-400 font-bold">✓</span>
+            <span class="stt-label">Small / Balanced (Fast CPU)</span>
+            <div class="stt-action-container flex items-center gap-1.5 shrink-0 ml-2">
+              <span class="stt-check hidden text-emerald-400 font-bold">✓</span>
+            </div>
           </button>
           <button onclick="window.selectSttModel('medium')" class="w-full text-left px-3 py-1.5 hover:bg-slate-800/80 flex items-center justify-between transition cursor-pointer stt-option" data-model="medium">
-            <span>Medium / Higher Accuracy</span>
-            <span class="stt-check hidden text-emerald-400 font-bold">✓</span>
+            <span class="stt-label">Medium / Higher Accuracy</span>
+            <div class="stt-action-container flex items-center gap-1.5 shrink-0 ml-2">
+              <span class="stt-check hidden text-emerald-400 font-bold">✓</span>
+            </div>
           </button>
           <button onclick="window.selectSttModel('large-v2')" class="w-full text-left px-3 py-1.5 hover:bg-slate-800/80 flex items-center justify-between transition cursor-pointer stt-option" data-model="large-v2">
-            <span>Large-v2 / Whisper large-v2</span>
-            <span class="stt-check hidden text-emerald-400 font-bold">✓</span>
+            <span class="stt-label">Large-v2 / Whisper large-v2</span>
+            <div class="stt-action-container flex items-center gap-1.5 shrink-0 ml-2">
+              <span class="stt-check hidden text-emerald-400 font-bold">✓</span>
+            </div>
           </button>
           <button onclick="window.selectSttModel('large-v3')" class="w-full text-left px-3 py-1.5 hover:bg-slate-800/80 flex items-center justify-between transition cursor-pointer stt-option" data-model="large-v3">
-            <span>Large-v3 / Best Accuracy</span>
-            <span class="stt-check hidden text-emerald-400 font-bold">✓</span>
+            <span class="stt-label">Large-v3 / Best Accuracy</span>
+            <div class="stt-action-container flex items-center gap-1.5 shrink-0 ml-2">
+              <span class="stt-check hidden text-emerald-400 font-bold">✓</span>
+            </div>
           </button>
 
           <div class="px-3 py-1 mt-1 text-[10px] font-semibold text-emerald-400 uppercase tracking-wider border-t border-b border-slate-800/80 flex items-center justify-between bg-emerald-950/20">
@@ -112,16 +120,22 @@
             <span class="text-[9px] text-emerald-500 font-mono">Fastest</span>
           </div>
           <button onclick="window.selectSttModel('groq-whisper-large-v3')" class="w-full text-left px-3 py-1.5 hover:bg-slate-800/80 flex items-center justify-between transition cursor-pointer stt-option" data-model="groq-whisper-large-v3">
-            <span class="font-medium text-emerald-300">Groq Whisper Large-v3 / API ⭐</span>
-            <span class="stt-check hidden text-emerald-400 font-bold">✓</span>
+            <span class="stt-label">Groq Whisper Large-v3 / API ⭐</span>
+            <div class="stt-action-container flex items-center gap-1.5 shrink-0 ml-2">
+              <span class="stt-check hidden text-emerald-400 font-bold">✓</span>
+            </div>
           </button>
           <button onclick="window.selectSttModel('groq-whisper-turbo')" class="w-full text-left px-3 py-1.5 hover:bg-slate-800/80 flex items-center justify-between transition cursor-pointer stt-option" data-model="groq-whisper-turbo">
-            <span>Groq Whisper Turbo / API (Fastest)</span>
-            <span class="stt-check hidden text-emerald-400 font-bold">✓</span>
+            <span class="stt-label">Groq Whisper Turbo / API (Fastest)</span>
+            <div class="stt-action-container flex items-center gap-1.5 shrink-0 ml-2">
+              <span class="stt-check hidden text-emerald-400 font-bold">✓</span>
+            </div>
           </button>
           <button onclick="window.selectSttModel('gemini-stt')" class="w-full text-left px-3 py-1.5 hover:bg-slate-800/80 flex items-center justify-between transition cursor-pointer stt-option" data-model="gemini-stt">
-            <span>Gemini STT / API</span>
-            <span class="stt-check hidden text-emerald-400 font-bold">✓</span>
+            <span class="stt-label">Gemini STT / API</span>
+            <div class="stt-action-container flex items-center gap-1.5 shrink-0 ml-2">
+              <span class="stt-check hidden text-emerald-400 font-bold">✓</span>
+            </div>
           </button>
 
           <div class="px-3 py-1 mt-1 text-[10px] font-semibold text-indigo-400 uppercase tracking-wider border-t border-b border-slate-800/80 flex items-center justify-between bg-indigo-950/20">
@@ -129,37 +143,44 @@
             <span class="text-[9px] text-indigo-400 font-mono">Deepgram</span>
           </div>
           <button onclick="window.selectSttModel('deepgram-nova-3')" class="w-full text-left px-3 py-1.5 hover:bg-slate-800/80 flex items-center justify-between transition cursor-pointer stt-option" data-model="deepgram-nova-3">
-            <span>Deepgram Nova-3 / API (Latest)</span>
-            <span class="stt-check hidden text-emerald-400 font-bold">✓</span>
+            <span class="stt-label">Deepgram Nova-3 / API (Latest)</span>
+            <div class="stt-action-container flex items-center gap-1.5 shrink-0 ml-2">
+              <span class="stt-check hidden text-emerald-400 font-bold">✓</span>
+            </div>
           </button>
           <button onclick="window.selectSttModel('deepgram-nova-2')" class="w-full text-left px-3 py-1.5 hover:bg-slate-800/80 flex items-center justify-between transition cursor-pointer stt-option" data-model="deepgram-nova-2">
-            <span>Deepgram Nova-2 / API</span>
-            <span class="stt-check hidden text-emerald-400 font-bold">✓</span>
+            <span class="stt-label">Deepgram Nova-2 / API</span>
+            <div class="stt-action-container flex items-center gap-1.5 shrink-0 ml-2">
+              <span class="stt-check hidden text-emerald-400 font-bold">✓</span>
+            </div>
           </button>
 
           <div class="p-1.5 mt-1 border-t border-slate-800/80 bg-slate-900/40">
             <button onclick="openSettingsModal(); window.closeSttModelDropdown();" class="w-full py-1 px-2 rounded-md bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white flex items-center justify-center gap-1.5 text-[11px] font-medium transition cursor-pointer">
               <i data-lucide="key" class="w-3 h-3 text-indigo-400"></i>
-              <span>កំណត់ API Keys (Groq / Gemini)</span>
+              <span>កំណត់ API Keys (Groq / Gemini / Deepgram)</span>
             </button>
           </div>
         </div>
       </div>
 
-      <!-- Data History Button -->
-      <button id="btn-data-history" onclick="openHistoryModal()" title="Data History (ប្រវត្តិវីដេអូដែលបាន Render/Export)"
-        class="h-8 px-3 inline-flex items-center gap-1.5 bg-slate-800/80 hover:bg-slate-700 text-slate-200 rounded-lg border border-slate-700/80 text-xs font-medium shadow-sm transition active:scale-95 cursor-pointer">
-        <i data-lucide="history" class="w-3.5 h-3.5 text-indigo-400"></i>
-        <span>Data History</span>
-        <span id="history-badge-count" class="hidden ml-0.5 px-1.5 py-0.2 bg-indigo-600/80 text-white rounded-full text-[10px] font-semibold">0</span>
-      </button>
+      <!-- Preferences & History Container (Grouped Aside Each Other) -->
+      <div class="flex items-center gap-1.5 pl-2 border-l border-slate-800/80">
+        <!-- Data History Button -->
+        <button id="btn-data-history" onclick="openHistoryModal()" title="Data History (ប្រវត្តិវីដេអូដែលបាន Render/Export)"
+          class="h-8 px-3 inline-flex items-center gap-1.5 bg-slate-800/80 hover:bg-slate-700 text-slate-200 rounded-lg border border-slate-700/80 text-xs font-medium shadow-sm transition active:scale-95 cursor-pointer">
+          <i data-lucide="history" class="w-3.5 h-3.5 text-indigo-400"></i>
+          <span>Data History</span>
+          <span id="history-badge-count" class="hidden ml-0.5 px-1.5 py-0.2 bg-indigo-600/80 text-white rounded-full text-[10px] font-semibold">0</span>
+        </button>
 
-      <!-- Settings Gear -->
-      <button onclick="openSettingsModal()"
-        class="h-8 w-8 inline-flex items-center justify-center text-slate-300 bg-slate-800/80 hover:bg-slate-700 rounded-lg border border-slate-700/80 transition cursor-pointer"
-        title="Workspace Settings">
-        <i data-lucide="settings" class="w-3.5 h-3.5"></i>
-      </button>
+        <!-- Settings Gear Button -->
+        <button onclick="openSettingsModal()"
+          class="h-8 w-8 inline-flex items-center justify-center text-slate-300 bg-slate-800/80 hover:bg-slate-700 rounded-lg border border-slate-700/80 transition cursor-pointer shrink-0"
+          title="Workspace Settings">
+          <i data-lucide="settings" class="w-3.5 h-3.5"></i>
+        </button>
+      </div>
     </div>
   </header>
 
@@ -374,7 +395,7 @@
               <span class="text-[11px] font-semibold text-slate-300">BGM Volume</span>
               <span id="val-bgm-volume" class="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-400 border border-amber-500/30">8%</span>
             </div>
-            <input type="range" id="setting-bgm-volume" min="0" max="30" step="1" value="8"
+            <input type="range" id="setting-bgm-volume" min="0" max="100" step="1" value="8"
               class="w-full accent-amber-500 h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer my-1">
             <span class="text-[9.5px] text-slate-400 truncate">កម្រិតភ្លេងកំដរ BGM Ducking</span>
           </div>
@@ -472,6 +493,24 @@
           <span class="text-[10px] bg-indigo-500/20 text-indigo-300 px-2 py-0.5 rounded-full font-mono">Faster-Whisper</span>
         </div>
 
+        <!-- Voice Generation (TTS) Progress Indicator (Hidden by default) -->
+        <div id="tts-progress-banner"
+          class="hidden mt-2 p-3 rounded-lg bg-slate-900/90 border border-emerald-500/40 text-xs flex flex-col gap-2 shadow-lg shadow-emerald-950/20">
+          <div class="flex items-center justify-between gap-3">
+            <div class="flex items-center gap-2.5 text-emerald-300">
+              <div class="w-4 h-4 border-2 border-emerald-400 border-t-transparent rounded-full animate-spin shrink-0"></div>
+              <span id="tts-status-text" class="font-medium">កំពុងដំណើរការបង្កើតសំឡេង Edge TTS...</span>
+            </div>
+            <div class="flex items-center gap-2">
+              <span id="tts-speed-badge" class="text-[10px] bg-slate-800 text-emerald-300 px-2.5 py-0.5 rounded-full font-mono border border-emerald-500/30">Speed: 1.0x</span>
+              <span id="tts-count-badge" class="text-[10px] bg-emerald-500/20 text-emerald-300 px-2.5 py-0.5 rounded-full font-mono font-semibold">0 / 0 (0%)</span>
+            </div>
+          </div>
+          <div class="w-full h-2 bg-slate-800 rounded-full overflow-hidden border border-emerald-950">
+            <div id="tts-progress-bar" class="h-full bg-gradient-to-r from-emerald-500 via-teal-400 to-emerald-400 rounded-full transition-all duration-150" style="width: 0%"></div>
+          </div>
+        </div>
+
         <!-- Subtitle List Table -->
         <div class="flex-1 overflow-y-auto mt-2 pr-1 min-h-0 relative">
           <table class="w-full table-fixed text-left text-xs border-collapse">
@@ -548,6 +587,13 @@
               class="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/40 text-amber-300 text-xs font-medium shadow-sm transition transform active:scale-95 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed">
               <i data-lucide="refresh-cw" class="w-3.5 h-3.5 text-amber-300"></i>
               <span id="regenerate-voice-text">Re-Generate Voice</span>
+            </button>
+
+            <!-- Retry Failed Voices CTA -->
+            <button id="btn-retry-failed-voice" onclick="retryFailedVoices()" title="បង្កើតសំឡេងឡើងវិញសម្រាប់តែជួរដែលបរាជ័យ ឬខ្វះសំឡេង"
+              class="hidden flex items-center gap-1.5 px-3 py-1 rounded-lg bg-rose-500/15 hover:bg-rose-500/25 border border-rose-500/40 text-rose-300 text-xs font-medium shadow-sm transition transform active:scale-95 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed">
+              <i data-lucide="rotate-ccw" class="w-3.5 h-3.5 text-rose-400"></i>
+              <span id="retry-failed-voice-text">Retry Failed</span>
             </button>
 
             <!-- Generate Video CTA (The final step in dubbing workflow!) -->
@@ -655,7 +701,12 @@
         </div>
 
         <div>
-          <label class="block text-slate-400 mb-1">Google Gemini API Key(s) (សម្រាប់ AI Translation)</label>
+          <div class="flex items-center justify-between mb-1">
+            <label class="text-slate-400">Google Gemini API Key(s) (សម្រាប់ AI Translation)</label>
+            <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener noreferrer" class="text-[11px] text-indigo-400 hover:text-indigo-300 hover:underline inline-flex items-center gap-1">
+              <span>🔑 យក Free Key ↗</span>
+            </a>
+          </div>
           <textarea id="input-gemini-api-key" rows="2" placeholder="AIzaSy... (អាចបញ្ចូល Key មួយ ឬច្រើន ដោយខណ្ឌដោយសញ្ញាក្បៀស ឬចុះបន្ទាត់)"
             class="w-full bg-slate-800 border border-slate-700 rounded-lg p-2 text-slate-200 font-mono text-xs focus:border-indigo-500 outline-hidden resize-y"></textarea>
           <p class="text-[10px] text-slate-500 mt-1">💡 អាចបញ្ចូល Key ច្រើន (មកពី Gmail ផ្សេងៗគ្នា) ដើម្បីកុំឱ្យជាប់កូតា ២៤ ម៉ោង។ ប្រព័ន្ធនឹងបង្វិល Key និង Auto-Failover ដោយស្វ័យប្រវត្តិ។</p>
@@ -665,15 +716,45 @@
           <div class="flex items-center justify-between mb-1">
             <label class="text-slate-400 flex items-center gap-1.5">
               <span class="text-emerald-400 font-bold">⚡</span>
-              <span>Groq API Key (សម្រាប់ Whisper Large-v3 / Turbo)</span>
+              <span>Groq API Key(s) (សម្រាប់ Whisper Large-v3 / Turbo)</span>
             </label>
             <a href="https://console.groq.com/keys" target="_blank" rel="noopener noreferrer" class="text-[11px] text-emerald-400 hover:text-emerald-300 hover:underline inline-flex items-center gap-1">
-              <span>យក Free API Key ↗</span>
+              <span>🔑 យក Free Key ↗</span>
             </a>
           </div>
-          <input type="password" id="input-groq-api-key" placeholder="gsk_..."
-            class="w-full bg-slate-800 border border-slate-700 rounded-lg p-2 text-slate-200 font-mono text-xs focus:border-emerald-500 outline-hidden">
-          <p class="text-[10px] text-slate-500 mt-1">💡 Ultra-fast Cloud Transcription (ល្បឿន 1-2s ក្នុងមួយវីដេអូ ភាពត្រឹមត្រូវ 99%)។ Free 100% ពី Groq Cloud។</p>
+          <textarea id="input-groq-api-key" rows="2" placeholder="gsk_... (អាចបញ្ចូល Key មួយ ឬច្រើន ដោយខណ្ឌដោយសញ្ញាក្បៀស ឬចុះបន្ទាត់)"
+            class="w-full bg-slate-800 border border-slate-700 rounded-lg p-2 text-slate-200 font-mono text-xs focus:border-emerald-500 outline-hidden resize-y"></textarea>
+          <p class="text-[10px] text-slate-500 mt-1">💡 អាចបញ្ចូល Key ច្រើន (មកពីគណនីផ្សេងគ្នា) ដើម្បីកុំឱ្យជាប់ Rate Limit (429)។ ប្រព័ន្ធនឹងបង្វិល Key និង Auto-Failover ដោយស្វ័យប្រវត្តិ។</p>
+        </div>
+
+        <div>
+          <div class="flex items-center justify-between mb-1">
+            <label class="text-slate-400 flex items-center gap-1.5">
+              <span class="text-indigo-400 font-bold">🌐</span>
+              <span>Deepgram API Key (សម្រាប់ Nova-2 / Nova-3)</span>
+            </label>
+            <a href="https://console.deepgram.com/" target="_blank" rel="noopener noreferrer" class="text-[11px] text-indigo-400 hover:text-indigo-300 hover:underline inline-flex items-center gap-1">
+              <span>🔑 យក API Key ↗</span>
+            </a>
+          </div>
+          <input type="password" id="input-deepgram-api-key" placeholder="Token..."
+            class="w-full bg-slate-800 border border-slate-700 rounded-lg p-2 text-slate-200 font-mono text-xs focus:border-indigo-500 outline-hidden">
+          <p class="text-[10px] text-slate-500 mt-1">💡 Commercial Specialist STT ផ្តល់ជូន Free Credit $200 សម្រាប់គណនីថ្មី។</p>
+        </div>
+
+        <div>
+          <div class="flex items-center justify-between mb-1">
+            <label class="text-slate-400 flex items-center gap-1.5">
+              <span class="text-purple-400 font-bold">🎵</span>
+              <span>Hugging Face Token (សម្រាប់ Mute Voice & BGM)</span>
+            </label>
+            <a href="https://huggingface.co/settings/tokens" target="_blank" rel="noopener noreferrer" class="text-[11px] text-purple-400 hover:text-purple-300 hover:underline inline-flex items-center gap-1">
+              <span>🔑 យក Free Token ↗</span>
+            </a>
+          </div>
+          <input type="password" id="input-hf-token" placeholder="hf_... (Free Access Token)"
+            class="w-full bg-slate-800 border border-slate-700 rounded-lg p-2 text-slate-200 font-mono text-xs focus:border-purple-500 outline-hidden">
+          <p class="text-[10px] text-slate-500 mt-1">💡 ចាំបាច់សម្រាប់ការបើកដំណើរការមុខងារ <b>Mute Voice</b> (លុបសំឡេងដើម រក្សាភ្លេង BGM)។ ឥតគិតថ្លៃ ១០០%។</p>
         </div>
 
         <div class="flex items-center justify-between py-2 border-t border-slate-800">
