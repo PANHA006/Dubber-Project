@@ -114,86 +114,140 @@ Dubber Project/
 
 ---
 
-## 📋 តម្រូវការជាមុន (Prerequisites)
+## 📦 កញ្ចប់កម្មវិធី និងបណ្ណាល័យដែលចាំបាច់ (Required Packages & Libraries)
 
-1. **Node.js:** កំណែ `v18.x` ឬខ្ពស់ជាងនេះ (ណែនាំ `v20+` ឬ `v22+`)។
-2. **Python:** កំណែ `3.10+` (មានដំឡើង `pip` និង `venv`)។
-3. **FFmpeg & FFprobe:** ត្រូវដំឡើង និងដាក់ក្នុង System `PATH`។
-   - ពិនិត្យតាមរយៈ៖ `ffmpeg -version`
-4. **Python Dependencies:** ដំឡើងក្នុង virtual environment ក្នុងថតគម្រោងផ្ទាល់ (`.venv`) ដើម្បីឱ្យប្រព័ន្ធរកឃើញដោយស្វ័យប្រវត្តិ៖
-   ```bash
-   # បង្កើត virtual environment ក្នុងថតគម្រោង
-   python -m venv .venv
+ដើម្បីដំណើរការប្រព័ន្ធនេះបានរលូន លោកអ្នកត្រូវមានបណ្ណាល័យសំខាន់ៗទាំងផ្នែក **Node.js**, **Python**, និង **System Tools** ដូចខាងក្រោម៖
 
-   # ធ្វើឱ្យសកម្ម (Windows)
-   .venv\Scripts\activate
+### ១. Node.js Packages (ដំឡើងតាមរយៈ `npm install`)
+គម្រោងនេះដំណើរការលើ **Node.js (Express v5)** ដោយប្រើប្រាស់បណ្ណាល័យផ្លូវការទំនើបៗ៖
 
-   # ធ្វើឱ្យសកម្ម (Linux/macOS)
-   source .venv/bin/activate
-
-   # ដំឡើង Dependencies
-   pip install faster-whisper edge-tts imageio-ffmpeg
-   ```
-   > [!NOTE]
-   > បើអ្នកប្រើ `.venv` នៅកន្លែងផ្សេង (ឧ. ថតខាងក្រៅគម្រោង) សូមកំណត់ `PYTHON_PATH` ក្នុង `.env` ឱ្យចង្អុលទៅ Interpreter នោះ។
+| Package Name | ប្រភេទ | តួនាទី និងសារៈសំខាន់ (Purpose) |
+|---|---|---|
+| **`express`** (`^5.2.1`) | Production | Web Framework ស្នូលសម្រាប់គ្រប់គ្រង RESTful API endpoints, static web files, និង routing |
+| **`@google/genai`** (`^2.22.0`) | Production | SDK ផ្លូវការរបស់ Google Gemini AI សម្រាប់ដំណើរការបកប្រែជាភាសាខ្មែរកម្រិតភាពយន្ត (Cinema Khmer Translation) |
+| **`multer`** (`^2.4.0`) | Production | គ្រប់គ្រងការ Upload ឯកសារទំហំធំ (វីដេអូ MP4, សំឡេង Audio, RVC Voice Models) |
+| **`cors`** (`^2.8.6`) | Production | អនុញ្ញាត និងការពារសុវត្ថិភាព Cross-Origin Resource Sharing |
+| **`dotenv`** (`^17.4.2`) | Production | ទាញយក Environment Variables ពីឯកសារ `.env` ចូលទៅក្នុង Process Runtime |
+| **`tailwindcss`** (`^4.3.3`) | DevDependency | CSS Engine ជំនាន់ថ្មី (v4) សម្រាប់រៀបចំ UI Web Dashboard ឱ្យមានភាពទាក់ទាញ និង Modern |
+| **`@tailwindcss/cli`** (`^4.3.3`) | DevDependency | Command-line tool សម្រាប់ Compile Tailwind CSS ចូលទៅកាន់ `public/css/output.css` |
+| **`nodemon`** (`^3.1.14`) | DevDependency | Auto-reload Node.js server ដោយស្វ័យប្រវត្តិនៅពេលកែសម្រួលកូដ (Hot Reloading) |
+| **`postcss`** & **`autoprefixer`** | DevDependency | Toolchain សម្រាប់ parse និងបន្ថែម CSS vendor prefixes ស្វ័យប្រវត្តិ |
 
 ---
 
-## 🚀 របៀបដំឡើង និងដំណើរការ (Installation & Quick Start)
+### ២. Python Packages (ដំឡើងក្នុង Virtual Environment `.venv`)
+ប្រព័ន្ធដំណើរការ AI Background Workers មួយចំនួនតាមរយៈ Python 3.10+៖
 
-### ១. ដំឡើង Node Dependencies
+| Python Library | តួនាទី និងសារៈសំខាន់ (Purpose) |
+|---|---|
+| **`faster-whisper`** | ម៉ាស៊ីន AI Speech-to-Text ក្នុងកុំព្យូទ័រផ្ទាល់ (Offline $0) ទាញយក Word Timestamps ច្បាស់លាស់ ដោយមិនចាំបាច់មាន Internet ឬ API Key |
+| **`edge-tts`** | បច្ចេកវិទ្យា Microsoft Neural Speech សម្រាប់បន្លឺសំឡេងខ្មែរធម្មជាតិ (សំឡេងប្រុស **Piseth** និងសំឡេងស្រី **Sreymom**) ដោយឥតគិតថ្លៃ |
+| **`imageio-ffmpeg`** | ផ្តល់ Python bindings និង utilities សម្រាប់បញ្ជូន Stream ទិន្នន័យសំឡេងជាមួយ FFmpeg |
+
+---
+
+### ៣. ឧបករណ៍ប្រព័ន្ធ (System Binary Tools)
+| ឧបករណ៍ | តម្រូវការ | តួនាទី (Purpose) |
+|---|---|---|
+| **`FFmpeg` & `FFprobe`** | កំណែ `v4.3+` (ណែនាំ `v6.x` ឬ `v7.x`) | ប្រើប្រាស់សម្រាប់ Audio Ducking, BGM Isolation, Multi-core parallel audio mixing, Subtitle muxing, និង Fast stream copy export |
+
+---
+
+## 🚀 របៀបដំឡើង និងដំណើរការជំហានៗ (How to Run Step-by-Step)
+
+សូមអនុវត្តតាមជំហានងាយៗខាងក្រោមដើម្បីតម្លើង និងដំណើរការគម្រោងពីដំបូង៖
+
+### ជំហានទី ១: Clone គម្រោងពី GitHub
+```bash
+git clone https://github.com/PANHA006/Dubber-Project.git
+cd Dubber-Project
+```
+
+### ជំហានទី ២: ដំឡើង Node.js Dependencies
 ```bash
 npm install
 
-# ធ្វើឱ្យសកម្ម Git Hook ការពារ Secret (ធ្វើតែម្ដង)
+# ធ្វើឱ្យសកម្ម Git Hooks សុវត្ថិភាព (ការពារកុំឱ្យច្រឡំ commit secret keys)
 npm run setup:hooks
 ```
 
-### ២. រៀបចំឯកសារ `.env`
-ចម្លងគំរូពី `.env.example`៖
+### ជំហានទី ៣: បង្កើត និងដំឡើង Python Virtual Environment (`.venv`)
 ```bash
-# លើ Windows (CMD)
+# ១. បង្កើត virtual environment ក្នុង folder គម្រោង
+python -m venv .venv
+
+# ២. Activate Virtual Environment
+# លើ Windows (Command Prompt ឬ PowerShell):
+.venv\Scripts\activate
+
+# លើ macOS / Linux:
+source .venv/bin/activate
+
+# ៣. ដំឡើង Python Packages ដែលចាំបាច់
+pip install faster-whisper edge-tts imageio-ffmpeg
+```
+
+### ជំហានទី ៤: រៀបចំឯកសារកំណត់រចនាសម្ព័ន្ធ (`.env`)
+ចម្លងគំរូឯកសារ `.env.example` ទៅជា `.env`៖
+```bash
+# លើ Windows
 copy .env.example .env
 
-# លើ PowerShell ឬ Linux/macOS
+# លើ macOS / Linux
 cp .env.example .env
 ```
-បន្ទាប់មកបើកឯកសារ `.env` ហើយបំពេញតម្លៃដូចខាងក្រោម៖
 
-| អថេរ | ចាំបាច់? | ចំណាំ |
-|---|---|---|
-| `GEMINI_API_KEY` | ✅ ចាំបាច់ | សម្រាប់ការបកប្រែ (អាចដាក់ច្រើន Keys ដោយប្រើសញ្ញាក្បៀស `,` ឬចុះបន្ទាត់ សម្រាប់ Auto-Failover) |
-| `GROQ_API_KEY` | 🔶 ណែនាំ | បើប្រើ Groq Cloud STT (លឿនបំផុត) |
-| `DEEPGRAM_API_KEY` | ⭕ ស្រេចចិត្ត | បើប្រើ Deepgram Nova STT |
-| `PYTHON_PATH` | ⭕ ស្រេចចិត្ត | ទុកទទេ បើប្រើ `.venv` ក្នុងថតគម្រោង |
+បើកឯកសារ `.env` ហើយកំណត់ Keys តាមតម្រូវការ៖
+```env
+# Port ដំណើរការ Server
+PORT=5000
 
-> [!IMPORTANT]
-> ប្រសិនបើមិនកំណត់ `GROQ_API_KEY` ឬ `DEEPGRAM_API_KEY` សូមជ្រើសរើស Model **Offline (Faster-Whisper)** នៅក្នុង UI ដើម្បីជៀសវាងកំហុស។
+# Gemini API Keys (សម្រាប់បកប្រែជាភាសាខ្មែរកម្រិតភាពយន្ត)
+# អាចដាក់ Key មួយ ឬច្រើនចែកដោយសញ្ញាក្បៀស (,) សម្រាប់ Auto-Failover
+GEMINI_API_KEY=AIzaSy...
 
-### ៣. Build Tailwind CSS
+# Groq Cloud API Key (ស្រេចចិត្ត - ប្រសិនបើចង់ប្រើ Groq Whisper STT ល្បឿនលឿន ២ វិនាទី)
+GROQ_API_KEY=gsk_...
+
+# Deepgram API Key (ស្រេចចិត្ត - ប្រសិនបើចង់ប្រើ Deepgram Nova-3)
+DEEPGRAM_API_KEY=...
+```
+
+> [!NOTE]
+> **តើធ្វើដូចម្តេចប្រសិនបើគ្មាន Gemini API Key?**
+> លោកអ្នកនៅតែអាចប្រើប្រាស់មុខងារបកប្រែបាន ១០០% ដោយសារប្រព័ន្ធមានបំពាក់មុខងារ **Free Google Translate (GTX)** ដែលអនុញ្ញាតឱ្យបកប្រែ Subtitles ភ្លាមៗដោយមិនចាំបាច់មាន API Key ឡើយ!
+
+### ជំហានទី ៥: Build Tailwind CSS
 ```bash
-# Build តែម្ដង
+# Build ឯកសារ CSS សម្រាប់ Production
 npm run build:css
 
-# ឬដំណើរការ Watch mode ពេលកំពុង Code
+# ឬបើក Watcher ប្រសិនបើលោកអ្នកចង់កែសម្រួល Design
 npm run watch:css
 ```
 
-### ៤. ចាប់ផ្ដើមដំណើរការ Server
+### ជំហានទី ៦: ចាប់ផ្ដើមដំណើរការ Server
 
-- **ជម្រើសទី ១ (Windows Batch Script - ងាយស្រួលបំផុត):**
-  - ចុចពីរដងលើ `start_dev.bat` (សម្រាប់ Nodemon)
-  - ឬចុចលើ `start_full_dev.bat` (សម្រាប់ Server + Tailwind Watcher ដំណាលគ្នា)
-- **ជម្រើសទី ២ (Command Line):**
+លោកអ្នកមានជម្រើសជាច្រើនក្នុងការ Run Server៖
+
+- **ជម្រើស A (1-Click Run លើ Windows - ងាយស្រួលបំផុត):**
+  - ចុចពីរដងលើឯកសារ `start_dev.bat` (ដំណើរការ Server ជាមួយ Nodemon Auto-restart)
+  - ឬចុចពីរដងលើ `start_full_dev.bat` (ដំណើរការទាំង Express Server និង Tailwind CSS Watcher ដំណាលគ្នា)
+
+- **ជម្រើស B (តាមរយៈ Terminal / Command Line):**
   ```bash
-  # សម្រាប់ Development
+  # សម្រាប់ Development (Nodemon Hot-Reload)
   npm run dev
 
-  # សម្រាប់ Production
+  # សម្រាប់ Development ពេញលេញ (Server + Tailwind CSS Auto-compile)
+  npm run dev:all
+
+  # សម្រាប់ Production Run
   npm start
   ```
 
-ចូលទៅកាន់ Browser៖
+### ជំហានទី ៧: បើក Dashboard លើ Web Browser
+នៅពេល Server ចាប់ផ្ដើមជោគជ័យ សូមបើក Browser របស់លោកអ្នករួចចូលទៅកាន់៖
 - 🌐 **Web Dashboard:** [http://localhost:5000](http://localhost:5000)
 - 🩺 **Health Check:** [http://localhost:5000/api/health](http://localhost:5000/api/health)
 - 📊 **System Status:** [http://localhost:5000/api/status](http://localhost:5000/api/status)
