@@ -118,6 +118,12 @@ class KeyManagerService {
     return unique;
   }
 
+  hasConfiguredKeys(customApiKey = null) {
+    this.purgeExpired(customApiKey);
+    const keys = this.getConfiguredKeys(customApiKey);
+    return keys.length > 0;
+  }
+
   getActiveKey(customApiKey = null) {
     this.purgeExpired(customApiKey);
     const keys = this.getConfiguredKeys(customApiKey);

@@ -52,6 +52,12 @@ router.post('/transcribe', upload.single('audio'), dubberController.transcribe);
 // Gemini AI Translation (Text to Natural Khmer)
 router.post('/translate', dubberController.translate);
 
+// Free Google Translate (No API key needed)
+router.post('/translate/google', dubberController.translateWithGoogle);
+
+// Gemini API Key Status Check
+router.get('/keys/status', dubberController.checkKeyStatus);
+
 // Microsoft Edge TTS Voice Generation (Khmer Speech)
 router.post('/generate-voice', dubberController.generateVoice);
 
@@ -66,6 +72,7 @@ router.post('/video/generate', dubberController.generateDubbedVideo);
 
 // Dubbed Video Export with custom name, path & quality
 router.post('/video/export', dubberController.exportVideo);
+router.get('/video/export/progress', dubberController.getExportProgress);
 
 // Server-Side Project Persistence (autosave_project.json)
 router.get('/project/load', dubberController.getProject);

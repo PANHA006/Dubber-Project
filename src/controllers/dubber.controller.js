@@ -6,6 +6,7 @@ const deepgramService = require('../services/deepgram.service');
 const ttsService = require('../services/tts.service');
 const rvcService = require('../services/rvc.service');
 const videoRendererService = require('../services/video-renderer.service');
+const aiAudioSeparatorService = require('../services/ai-audio-separator.service');
 const historyService = require('../services/history.service');
 const { formatTerminalLog, formatTerminalProgress } = require('../utils/terminal-logger');
 
@@ -217,6 +218,57 @@ class DubberController {
   }
 
   /**
+   * Free Google Translate (No API key needed)
+   */
+  async translateWithGoogle(req, res, next) {
+    try {
+      const googleTranslateService = require('../services/google-translate.service');
+      const { subtitles, sourceLanguage } = req.body || {};
+
+      if (!Array.isArray(subtitles) || subtitles.length === 0) {
+        return res.status(400).json({
+          success: false,
+          message: 'មិនមាន Subtitles សម្រាប់បកប្រែទេ (Missing subtitles)'
+        });
+      }
+
+      formatTerminalLog('SERVER:GOOGLE_TRANSLATE', `Received ${subtitles.length} lines for Free Google Translation`);
+
+      const translated = await googleTranslateService.translateSubtitles(subtitles, {
+        sourceLanguage: sourceLanguage || null
+      });
+
+      res.status(200).json({
+        success: true,
+        data: translated
+      });
+    } catch (error) {
+      formatTerminalLog('SERVER:GOOGLE_TRANSLATE_ERR', error.message);
+      next(error);
+    }
+  }
+
+  /**
+   * Check if Gemini API Key is configured on client or server
+   */
+  checkKeyStatus(req, res) {
+    try {
+      const keyManager = require('../services/key-manager.service');
+      const customKey = req.query.customKey || req.body?.customKey || null;
+      const hasKey = keyManager.hasConfiguredKeys(customKey);
+      res.status(200).json({
+        success: true,
+        hasGeminiKey: hasKey
+      });
+    } catch (error) {
+      res.status(200).json({
+        success: true,
+        hasGeminiKey: false
+      });
+    }
+  }
+
+  /**
    * Generate Khmer voice audio files using Microsoft Edge TTS
    */
     async generateVoice(req, res, next) {
@@ -355,6 +407,24 @@ class DubberController {
   }
 
   /**
+   * Get active video export progress
+   */
+  getExportProgress(req, res) {
+    try {
+      const progress = videoRendererService.getExportProgress();
+      res.status(200).json({
+        success: true,
+        data: progress
+      });
+    } catch (error) {
+      res.status(500).json({
+        success: false,
+        message: error.message
+      });
+    }
+  }
+
+  /**
    * Upload video file and persist to storage/videos/
    */
   async uploadVideo(req, res, next) {
@@ -372,6 +442,17 @@ class DubberController {
       const videoUrl = `/storage/videos/${filename}`;
 
       formatTerminalLog('SERVER:VIDEO_UPLOAD', `Persisted video "${originalName}" (${sizeMb} MB) to ${videoUrl}`);
+
+      // High-Speed Pre-Separation: Warm up BGM isolation cache asynchronously in background
+      try {
+        const fullVideoPath = req.file.path;
+        aiAudioSeparatorService.extractAndIsolateBgm({
+          videoPath: fullVideoPath,
+          settings: { bgVolume: 8 }
+        }).catch(err => {
+          formatTerminalLog('AI:PRE_SEPARATION_INFO', `Background pre-separation info: ${err.message}`);
+        });
+      } catch (_) {}
 
       res.status(200).json({
         success: true,

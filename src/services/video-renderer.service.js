@@ -26,7 +26,7 @@ const aiAudioSeparatorService = require('./ai-audio-separator.service');
  * @param {Object} [options.details] - extra detail fields for every tick
  * @returns {() => void} call to stop reporting (e.g. right before completion)
  */
-function trackFFmpegProgress(proc, { totalDuration = 0, label = 'Muxing...', tag = 'RENDER:MUX', details = {} } = {}) {
+function trackFFmpegProgress(proc, { totalDuration = 0, label = 'Muxing...', tag = 'RENDER:MUX', details = {}, onProgress = null } = {}) {
   if (!proc || !proc.stdout) return () => {};
 
   const startedAt = Date.now();
@@ -55,12 +55,25 @@ function trackFFmpegProgress(proc, { totalDuration = 0, label = 'Muxing...', tag
       }
     }
 
+    const speedText = outSeconds > 0.5 && elapsedSec > 1 ? `${(outSeconds / elapsedSec).toFixed(1)}x` : '--';
     formatTerminalProgress(tag, pct, 100, label, {
       ...details,
       progress: `${outSeconds.toFixed(1)}s / ${totalDuration.toFixed(1)}s`,
-      speed: outSeconds > 0.5 && elapsedSec > 1 ? `${(outSeconds / elapsedSec).toFixed(1)}x` : '--',
+      speed: speedText,
       eta: etaText
     });
+
+    if (typeof onProgress === 'function') {
+      try {
+        onProgress({
+          percent: pct,
+          outSeconds,
+          totalDuration,
+          speed: speedText,
+          eta: etaText
+        });
+      } catch (_) {}
+    }
   };
 
   proc.stdout.on('data', (chunk) => {
@@ -87,7 +100,20 @@ function trackFFmpegProgress(proc, { totalDuration = 0, label = 'Muxing...', tag
     if (updated) emit();
   });
 
-  return () => { stopped = true; };
+  return () => {
+    stopped = true;
+    if (typeof onProgress === 'function') {
+      try {
+        onProgress({
+          percent: 100,
+          outSeconds: totalDuration,
+          totalDuration,
+          speed: '--',
+          eta: '0s'
+        });
+      } catch (_) {}
+    }
+  };
 }
 
 class VideoRendererService {
@@ -574,17 +600,21 @@ class VideoRendererService {
         batches.push(validVoices.slice(i, i + BATCH_SIZE));
       }
 
-      formatTerminalLog('AUDIO:STEM_BATCHING', `Chunking ${validVoices.length} voice clips into ${batches.length} stems (max ${BATCH_SIZE}/stem) to prevent command-line overflow...`);
+      formatTerminalLog('AUDIO:STEM_BATCHING', `Chunking ${validVoices.length} voice clips into ${batches.length} parallel stems (max ${BATCH_SIZE}/stem)... [Multi-Core Parallel]`);
 
-      const batchStemPaths = [];
-      for (let b = 0; b < batches.length; b++) {
-        formatTerminalProgress('RENDER:STEMS', b + 1, batches.length, `Mixing Audio Stem ${b + 1}/${batches.length}...`, {
-          batch: `${b + 1}/${batches.length}`,
-          clips: `${batches[b].length} clips`
-        });
-        const stemPath = await renderBatch(batches[b], b);
-        batchStemPaths.push(stemPath);
-      }
+      let completedBatches = 0;
+      const batchStemPaths = await Promise.all(
+        batches.map(async (batch, b) => {
+          const stemPath = await renderBatch(batch, b);
+          completedBatches++;
+          formatTerminalProgress('RENDER:STEMS', completedBatches, batches.length, `Mixing Audio Stems in Parallel (${completedBatches}/${batches.length})...`, {
+            progress: `${completedBatches}/${batches.length}`,
+            currentBatch: `#${b + 1}`,
+            clips: `${batch.length} clips`
+          });
+          return stemPath;
+        })
+      );
 
       // Mix all batch stems into one final master voice track
       const masterPath = path.join(this.voiceStorageDir, `master_voice_${Date.now()}.wav`);
@@ -731,33 +761,77 @@ class VideoRendererService {
 
     const targetFilePath = path.join(targetDir, cleanName);
 
+    const q = (quality || 'original').toLowerCase();
+    const videoDuration = await this.getDuration(sourcePath);
+
     formatTerminalLog('VIDEO:EXPORT_START', `Exporting video: ${cleanName}`, {
-      quality,
+      quality: q,
+      duration: videoDuration > 0 ? `${videoDuration.toFixed(1)}s` : 'unknown',
       destination: targetDir
     });
 
     const args = ['-y', '-i', sourcePath];
+    args.push('-progress', 'pipe:1');
+    args.push('-nostats');
 
     // Apply quality profiles
-    const q = (quality || 'original').toLowerCase();
     if (q === '720p') {
-      args.push('-vf', 'scale=-2:720', '-c:v', 'libx264', '-crf', '23', '-preset', 'veryfast', '-c:a', 'aac', '-b:a', '128k');
+      args.push('-vf', 'scale=-2:720', '-c:v', 'libx264', '-crf', '23', '-preset', 'ultrafast', '-c:a', 'aac', '-b:a', '128k');
     } else if (q === 'high') {
-      args.push('-c:v', 'libx264', '-b:v', '4500k', '-preset', 'veryfast', '-c:a', 'aac', '-b:a', '320k');
+      args.push('-c:v', 'libx264', '-b:v', '4500k', '-preset', 'ultrafast', '-c:a', 'aac', '-b:a', '320k');
     } else if (q === '4k') {
-      args.push('-vf', 'scale=-2:2160', '-c:v', 'libx264', '-crf', '20', '-preset', 'veryfast', '-c:a', 'aac', '-b:a', '320k');
+      args.push('-vf', 'scale=-2:2160', '-c:v', 'libx264', '-crf', '20', '-preset', 'ultrafast', '-c:a', 'aac', '-b:a', '320k');
     } else {
-      // Default: Original match
+      // Default: Original match (Instant Fast Stream Copy - 1 to 2 seconds)
       args.push('-c:v', 'copy', '-c:a', 'copy');
     }
 
     args.push(targetFilePath);
 
+    this.exportProgress = {
+      active: true,
+      percent: 0,
+      speed: '--',
+      eta: '--',
+      status: 'exporting',
+      file: cleanName,
+      quality: q
+    };
+
     return new Promise((resolve, reject) => {
       const proc = spawn('ffmpeg', args);
       let stderr = '';
       proc.stderr.on('data', chunk => { stderr += chunk.toString(); });
+
+      const stopExportProgress = trackFFmpegProgress(proc, {
+        totalDuration: videoDuration,
+        label: `Exporting video (${q})...`,
+        tag: 'VIDEO:EXPORT_PROGRESS',
+        details: { file: cleanName, quality: q },
+        onProgress: (prog) => {
+          this.exportProgress = {
+            active: true,
+            percent: prog.percent,
+            speed: prog.speed,
+            eta: prog.eta,
+            status: 'exporting',
+            file: cleanName,
+            quality: q
+          };
+        }
+      });
+
       proc.on('close', async (code) => {
+        stopExportProgress();
+        this.exportProgress = {
+          active: false,
+          percent: 100,
+          speed: '--',
+          eta: '0s',
+          status: 'completed',
+          file: cleanName,
+          quality: q
+        };
         if (code !== 0) {
           // If original copy failed (e.g., codec compatibility), fallback to re-encode
           if (q === 'original') {
@@ -824,6 +898,17 @@ class VideoRendererService {
       });
 
       proc.on('error', (err) => {
+        stopExportProgress();
+        this.exportProgress = {
+          active: false,
+          percent: 0,
+          speed: '--',
+          eta: '--',
+          status: 'error',
+          error: err.message,
+          file: cleanName,
+          quality: q
+        };
         formatTerminalLog('FFMPEG:EXPORT_ERR', `Export launch error: ${err.message}`);
         reject(err);
       });

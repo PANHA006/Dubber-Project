@@ -60,6 +60,11 @@ window.triggerJSONUpload = triggerJSONUpload;
 window.syncSubtitlesFromDOM = syncSubtitlesFromDOM;
 window.setTimelineZoom = setTimelineZoom;
 window.startTranslation = startTranslation;
+window.openMissingKeyModal = openMissingKeyModal;
+window.closeMissingKeyModal = closeMissingKeyModal;
+window.goToSettingsForGeminiKey = goToSettingsForGeminiKey;
+window.translateWithFreeGoogle = translateWithFreeGoogle;
+window.executeGoogleTranslation = executeGoogleTranslation;
 window.resetDubbingSettings = resetDubbingSettings;
 window.applySmartEndPadding = applySmartEndPadding;
 window.toggleSubtitleFullscreen = toggleSubtitleFullscreen;
@@ -292,6 +297,25 @@ export async function startTranslation() {
     return;
   }
 
+  // Pre-flight check: Verify Gemini API key configuration
+  let hasGeminiKey = Boolean(state.geminiApiKey && state.geminiApiKey.trim());
+  if (!hasGeminiKey) {
+    try {
+      const statusRes = await fetch('/api/keys/status');
+      if (statusRes.ok) {
+        const statusJson = await statusRes.json();
+        if (statusJson?.hasGeminiKey) {
+          hasGeminiKey = true;
+        }
+      }
+    } catch (_) {}
+  }
+
+  if (!hasGeminiKey) {
+    openMissingKeyModal();
+    return;
+  }
+
   const btn = document.getElementById('btn-translate');
   const btnText = document.getElementById('translate-btn-text');
 
@@ -363,6 +387,10 @@ export async function startTranslation() {
   } catch (err) {
     console.error('Translation error:', err);
     logToTerminal('CLIENT:TRANSLATE_FAIL', err.message);
+    const msg = (err.message || '').toLowerCase();
+    if (msg.includes('api key') || msg.includes('gemini') || msg.includes('quota') || msg.includes('key')) {
+      openMissingKeyModal();
+    }
     window.showToast(`❌ បរាជ័យក្នុងការបកប្រែ៖ ${err.message}`);
   } finally {
     state.isTranslating = false;
@@ -1071,6 +1099,114 @@ window.openSettingsModal = function(focusInputId = null) {
   }
 };
 
+export function openMissingKeyModal() {
+  const modal = document.getElementById('missing-key-modal');
+  if (modal) {
+    modal.classList.remove('hidden');
+    modal.classList.add('flex');
+    if (window.lucide) window.lucide.createIcons();
+  }
+}
+
+export function closeMissingKeyModal() {
+  const modal = document.getElementById('missing-key-modal');
+  if (modal) {
+    modal.classList.add('hidden');
+    modal.classList.remove('flex');
+  }
+}
+
+export function goToSettingsForGeminiKey() {
+  closeMissingKeyModal();
+  window.openSettingsModal('input-gemini-api-key');
+}
+
+export async function translateWithFreeGoogle() {
+  closeMissingKeyModal();
+  await executeGoogleTranslation();
+}
+
+/**
+ * Free Google Translate Workflow:
+ * Sends transcribed subtitles to Free Google Translate endpoint (GTX) -> Updates Subtitles Table
+ */
+export async function executeGoogleTranslation() {
+  if (state.isTranslating) {
+    window.showToast('កំពុងបកប្រែជាភាសាខ្មែរ សូមរង់ចាំ...');
+    return;
+  }
+
+  if (!state.subtitles || state.subtitles.length === 0) {
+    window.showToast('⚠️ មិនទាន់មាន Subtitles សម្រាប់បកប្រែទេ! សូមចុច Transcript ជាមុនសិន');
+    return;
+  }
+
+  const btn = document.getElementById('btn-translate');
+  const btnText = document.getElementById('translate-btn-text');
+
+  try {
+    state.isTranslating = true;
+    if (btn) {
+      btn.setAttribute('disabled', 'true');
+      btn.classList.add('opacity-70', 'cursor-wait');
+    }
+    if (btnText) btnText.textContent = 'Translating (Google Free)...';
+    window.showToast('🌐 កំពុងបកប្រែតាម Google Translate (មិនបាច់ប្រើ Key)...');
+    logToTerminal('CLIENT:GOOGLE_TRANSLATE', `Translating ${state.subtitles.length} lines via Free Google Translate (GTX)...`);
+
+    const response = await fetch('/api/translate/google', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        subtitles: state.subtitles.map(s => ({
+          id: s.id,
+          start: s.start,
+          end: s.end,
+          startSec: s.startSec,
+          endSec: s.endSec,
+          originalText: s.originalText || s.text || '',
+          khmerText: s.khmerText || '',
+          englishText: s.englishText || ''
+        })),
+        sourceLanguage: state.sourceLanguage || 'auto'
+      })
+    });
+
+    const result = await response.json();
+    if (!response.ok || !result.success) {
+      throw new Error(result.message || 'Google Translate failed');
+    }
+
+    const translatedList = result.data;
+    if (Array.isArray(translatedList)) {
+      translatedList.forEach((item, idx) => {
+        if (state.subtitles[idx]) {
+          if (item.khmerText) state.subtitles[idx].khmerText = item.khmerText;
+          if (item.englishText) state.subtitles[idx].englishText = item.englishText;
+        }
+      });
+      renderSubtitleTable();
+      state.emit('subtitlesChanged', state.subtitles);
+      window.triggerProjectAutoSave?.();
+      logToTerminal('CLIENT:GOOGLE_TRANSLATE_OK', `Successfully translated ${translatedList.length} subtitles using Free Google Translate.`);
+      window.showToast(`🎉 បានបកប្រែតាម Google Translate ជោគជ័យ ${translatedList.length} ជួរ (Free មិនបាច់ប្រើ Key)!`);
+    }
+  } catch (err) {
+    console.error('Google Translation error:', err);
+    logToTerminal('CLIENT:GOOGLE_TRANSLATE_FAIL', err.message);
+    window.showToast(`❌ បរាជ័យក្នុងការបកប្រែតាម Google៖ ${err.message}`);
+  } finally {
+    state.isTranslating = false;
+    if (btn) {
+      btn.removeAttribute('disabled');
+      btn.classList.remove('opacity-70', 'cursor-wait');
+    }
+    if (btnText) btnText.textContent = 'Translate';
+  }
+}
+
 window.closeSettingsModal = function() {
   const modal = document.getElementById('settings-modal');
   modal?.classList.add('hidden');
@@ -1230,7 +1366,13 @@ window.confirmExportVideo = async function() {
   }
 
   const exportPath = savePathInput?.value?.trim() || 'storage/exports';
-  const quality = qualitySelect?.value || 'high';
+  const quality = qualitySelect?.value || 'original';
+  const progressBar = document.getElementById('export-progress-bar');
+  const percentText = document.getElementById('export-modal-percent');
+  const speedText = document.getElementById('export-speed-text');
+  const etaText = document.getElementById('export-eta-text');
+
+  let pollInterval = null;
 
   try {
     if (btn) {
@@ -1244,13 +1386,42 @@ window.confirmExportVideo = async function() {
     }
     if (statusEl) {
       statusEl.classList.remove('hidden');
-      if (statusText) statusText.textContent = `កំពុងដំណើរការ Export វីដេអូ (${quality})... សូមរង់ចាំបន្តិច`;
+      if (statusText) statusText.textContent = quality === 'original' 
+        ? 'កំពុងចម្លងវីដេអូដើម (Fast Stream Copy)...' 
+        : `កំពុងដំណើរការ Export វីដេអូ (${quality})...`;
     }
+    if (progressBar) progressBar.style.width = '0%';
+    if (percentText) percentText.textContent = '0%';
+    if (speedText) speedText.textContent = 'ល្បឿន: --';
+    if (etaText) etaText.textContent = 'នៅសល់: --';
+
     if (window.lucide && typeof window.lucide.createIcons === 'function') {
       window.lucide.createIcons();
     }
 
     logToTerminal('CLIENT:VIDEO_EXPORT_START', `Starting video export: fileName=${rawFileName}, quality=${quality}, path=${exportPath}`);
+
+    // Poll live export progress from backend
+    pollInterval = setInterval(async () => {
+      try {
+        const pRes = await fetch('/api/video/export/progress');
+        if (!pRes.ok) return;
+        const pResult = await pRes.json();
+        if (pResult?.success && pResult.data) {
+          const p = pResult.data;
+          const pct = Math.max(0, Math.min(100, Math.round(p.percent || 0)));
+          if (progressBar) progressBar.style.width = `${pct}%`;
+          if (percentText) percentText.textContent = `${pct}%`;
+          if (speedText && p.speed) speedText.textContent = `ល្បឿន: ${p.speed}`;
+          if (etaText && p.eta) etaText.textContent = `នៅសល់: ${p.eta}`;
+          if (statusText && pct > 0) {
+            statusText.textContent = pct >= 100 
+              ? 'Export រួចរាល់ ១០០%!' 
+              : `កំពុងដំណើរការ Export (${quality})...`;
+          }
+        }
+      } catch (_) {}
+    }, 300);
 
     const res = await fetch('/api/video/export', {
       method: 'POST',
@@ -1268,6 +1439,16 @@ window.confirmExportVideo = async function() {
       throw new Error(result.message || 'Export failed');
     }
 
+    if (pollInterval) {
+      clearInterval(pollInterval);
+      pollInterval = null;
+    }
+
+    // Set 100% on complete
+    if (progressBar) progressBar.style.width = '100%';
+    if (percentText) percentText.textContent = '100%';
+    if (statusText) statusText.textContent = 'Export រួចរាល់ ១០០%!';
+
     logToTerminal('CLIENT:VIDEO_EXPORT_SUCCESS', `Video exported: ${result.data.fileName} (${result.data.sizeMb} MB) at ${result.data.fullPath}`);
 
     // Trigger browser download
@@ -1282,13 +1463,21 @@ window.confirmExportVideo = async function() {
 
     setTimeout(() => {
       window.closeExportModal();
-    }, 600);
+    }, 700);
 
   } catch (err) {
+    if (pollInterval) {
+      clearInterval(pollInterval);
+      pollInterval = null;
+    }
     console.error('Export video error:', err);
     logToTerminal('CLIENT:VIDEO_EXPORT_ERR', `Export video failed: ${err.message}`);
     window.showToast?.(`❌ បរាជ័យក្នុងការ Export វីដេអូ៖ ${err.message}`);
   } finally {
+    if (pollInterval) {
+      clearInterval(pollInterval);
+      pollInterval = null;
+    }
     if (btn) {
       btn.removeAttribute('disabled');
       btn.classList.remove('opacity-70', 'cursor-wait');
@@ -1298,7 +1487,6 @@ window.confirmExportVideo = async function() {
       btnIcon.setAttribute('data-lucide', 'download');
       btnIcon.classList.remove('animate-spin');
     }
-    if (statusEl) statusEl.classList.add('hidden');
     if (window.lucide && typeof window.lucide.createIcons === 'function') {
       window.lucide.createIcons();
     }
