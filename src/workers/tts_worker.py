@@ -35,6 +35,7 @@ Concurrency is tunable through the environment if Edge TTS ever rate-limits:
 
 import sys
 import os
+import re
 import json
 import time
 import asyncio
@@ -63,6 +64,48 @@ def resolve_voice(voice_str):
     if "sreymom" in v_lower or "female" in v_lower or "ស្រី" in v_lower:
         return "km-KH-SreymomNeural"
     return "km-KH-PisethNeural"
+
+def sanitize_khmer_text(text):
+    """
+    Sanitize Khmer text for Microsoft Edge Neural TTS.
+    Prevents stuttering, choppy speech, and robotic pauses by:
+    1. Removing zero-width spaces / non-joiners.
+    2. Expanding repetition symbol 'ៗ' into full words.
+    3. Removing ellipses and multiple dots that cause awkward 500ms dead silences.
+    4. Removing quotes, brackets, and mid-sentence commas/semicolons which cause
+       Edge-TTS to insert harsh unnatural pauses.
+    5. Removing spaces between Khmer characters so speech flows continuously as natural
+       Khmer scriptio continua.
+    """
+    if not text or not isinstance(text, str):
+        return ""
+
+    # Remove zero-width characters and BOM
+    for zws in ("\u200b", "\u200c", "\u200d", "\ufeff"):
+        text = text.replace(zws, "")
+
+    # Expand Khmer repetition symbol 'ៗ' by repeating preceding word if any remained
+    text = re.sub(r'(\b\w+)\s*ៗ', r'\1\1', text)
+    text = text.replace("ៗ", "")
+
+    # Remove ellipses which cause long 500ms+ dead silence
+    text = re.sub(r"\.{2,}", " ", text)
+
+    # Remove quotation marks, parentheses, dashes, brackets, slashes
+    text = re.sub(r"[\"\'«»“”‘’()[\]{}—–_~`\\/]", "", text)
+
+    # Commas and semicolons cause artificial mid-sentence pauses in Edge-TTS
+    text = text.replace(",", "").replace(";", "")
+
+    # Collapse multiple whitespace
+    text = re.sub(r"\s+", " ", text)
+
+    # In Khmer, remove spaces between consecutive Khmer characters
+    # (Edge-TTS interprets every space in Khmer as a clause boundary pause)
+    text = re.sub(r"(?<=[\u1780-\u17FF])\s+(?=[\u1780-\u17FF])", "", text)
+
+    return text.strip()
+
 
 
 # ---------------------------------------------------------------------------
@@ -303,8 +346,8 @@ def cache_key(text, voice, target_duration):
 # Synthesis
 # ---------------------------------------------------------------------------
 
-async def synthesize(text, voice, out_path, net_sem):
-    """Call Edge TTS with bounded concurrency and backoff on transient errors."""
+async def synthesize(text, voice, out_path, net_sem, rate=None):
+    """Call Edge TTS with bounded concurrency, optional native rate, and backoff on transient errors."""
     last_error = None
     for attempt in range(MAX_RETRIES + 1):
         try:
@@ -315,7 +358,10 @@ async def synthesize(text, voice, out_path, net_sem):
                     pass
             # Hold the slot only for the network call, never during backoff.
             async with net_sem:
-                communicator = edge_tts.Communicate(text, voice)
+                kwargs = {}
+                if rate and rate != "+0%":
+                    kwargs["rate"] = rate
+                communicator = edge_tts.Communicate(text, voice, **kwargs)
                 await communicator.save(out_path)
             if os.path.isfile(out_path) and os.path.getsize(out_path) > 0:
                 return
@@ -357,8 +403,11 @@ def resolve_target_duration(item):
 
 async def generate_single_item(item, output_dir, net_sem, cpu_sem):
     sub_id = item.get("id", f"sub_{os.urandom(4).hex()}")
-    text = (item.get("khmerText") or item.get("text") or "").strip()
+    raw_text = (item.get("khmerText") or item.get("text") or "").strip()
     voice_pref = item.get("voice", "Piseth (Male)")
+    text = sanitize_khmer_text(raw_text)
+    if not text:
+        text = raw_text
 
     if not text:
         return {"id": sub_id, "success": False, "error": "Empty text"}
@@ -440,19 +489,41 @@ async def generate_single_item(item, output_dir, net_sem, cpu_sem):
         speed_applied = 1.0
         duration = initial_duration
 
-        # Auto-fit speech if spoken audio exceeds target duration.
+        # Auto-fit speech with Native Neural Rate first to prevent robotic stuttering / choppy audio.
         if target_duration and target_duration > 0.4 and initial_duration > (target_duration + 0.08):
             needed_ratio = initial_duration / target_duration
-            # Cap speed ratio between 1.05 and 1.35 to prevent chipmunk / fast speech
-            clamped_speed = round(min(1.35, max(1.05, needed_ratio)), 2)
-            async with cpu_sem:
-                if await apply_speed(out_path, clamped_speed):
-                    # atempo scales duration by exactly 1/speed, so no second
-                    # ffprobe is needed to learn the new length.
-                    duration = round(initial_duration / clamped_speed, 2)
-                    speed_applied = clamped_speed
-                else:
-                    duration = initial_duration
+            rate_pct = int(min(28, max(6, round((needed_ratio - 1.0) * 100))))
+            native_rate = f"+{rate_pct}%"
+
+            # Re-synthesize with native Edge-TTS neural rate (smooth, natural, zero robotic artifacts)
+            temp_fast = out_path + ".fast.mp3"
+            try:
+                await synthesize(text, chosen_voice, temp_fast, net_sem, rate=native_rate)
+                async with cpu_sem:
+                    await trim_trailing_silence(temp_fast)
+                    fast_duration = get_audio_duration(temp_fast)
+
+                if os.path.isfile(temp_fast) and os.path.getsize(temp_fast) > 1000 and fast_duration > 0:
+                    os.replace(temp_fast, out_path)
+                    duration = fast_duration
+                    speed_applied = round(initial_duration / fast_duration, 2)
+            except Exception:
+                pass
+            finally:
+                if os.path.isfile(temp_fast):
+                    try:
+                        os.remove(temp_fast)
+                    except Exception:
+                        pass
+
+            # Gentle fallback: only if STILL exceeding after native rate, apply mild atempo capped at 1.15
+            if target_duration and duration > (target_duration + 0.12):
+                remaining_ratio = duration / target_duration
+                mild_speed = round(min(1.15, max(1.05, remaining_ratio)), 2)
+                async with cpu_sem:
+                    if await apply_speed(out_path, mild_speed):
+                        duration = round(duration / mild_speed, 2)
+                        speed_applied = round(speed_applied * mild_speed, 2)
 
         try:
             with open(meta_path, "w", encoding="utf-8") as mf:
@@ -485,7 +556,7 @@ async def main():
     if len(sys.argv) >= 2:
         input_arg = sys.argv[1]
         if os.path.isfile(input_arg):
-            with open(input_arg, "r", encoding="utf-8") as f:
+            with open(input_arg, "r", encoding="utf-8-sig") as f:
                 data = json.load(f)
         else:
             try:

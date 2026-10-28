@@ -918,8 +918,9 @@ export function syncDubVoicePlayback(currentTime) {
     if (activeDubAudio.paused) {
       activeDubAudio.play().catch(() => {});
     }
-    // Drift compensation: if audio drifted more than 0.25s from video, resync it
-    if (Math.abs(activeDubAudio.currentTime - timeOffset) > 0.25) {
+    // Drift compensation: ONLY resync if audio has severely drifted (> 1.2s), e.g. user scrubbed timeline.
+    // Setting currentTime during normal playback causes decoder pauses & micro-stuttering ("អាក់ៗ").
+    if (Math.abs(activeDubAudio.currentTime - timeOffset) > 1.2) {
       try {
         activeDubAudio.currentTime = timeOffset;
       } catch (_) {}

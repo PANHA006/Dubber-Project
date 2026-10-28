@@ -762,6 +762,49 @@ export function importJSONContent(content) {
   });
 
   if (parsed.length > 0) {
+    // When importing JSON into an active project that already has subtitles,
+    // NEVER alter the existing Start and End column timestamps!
+    if (Array.isArray(state.subtitles) && state.subtitles.length > 0) {
+      const existingList = state.subtitles;
+      const updated = existingList.map((existing, idx) => {
+        // Match by id first, then by row index
+        const incoming = parsed.find(p => p.id && String(p.id) === String(existing.id)) || parsed[idx];
+        if (!incoming) return existing;
+
+        const hasTextChange = incoming.khmerText && incoming.khmerText !== existing.khmerText;
+
+        return {
+          ...existing,
+          // STRICTLY PRESERVE Start & End timing from existing state!
+          start: existing.start,
+          end: existing.end,
+          startSec: existing.startSec,
+          endSec: existing.endSec,
+          id: existing.id,
+          // Update texts & metadata from imported file
+          originalText: incoming.originalText || existing.originalText || '',
+          englishText: incoming.englishText || existing.englishText || '',
+          khmerText: incoming.khmerText || existing.khmerText || '',
+          voice: incoming.voice || existing.voice || 'Piseth (Male)',
+          status: (hasTextChange && existing.status === 'Ready')
+            ? 'Modified'
+            : (existing.status || 'Pending'),
+          needsRegenerate: (hasTextChange && existing.status === 'Ready')
+            ? true
+            : existing.needsRegenerate
+        };
+      });
+
+      state.subtitles = updated;
+      renderSubtitleTable();
+      state.emit('subtitlesChanged', state.subtitles);
+      if (typeof window !== 'undefined' && window.triggerProjectAutoSave) {
+        window.triggerProjectAutoSave();
+      }
+      window.showToast?.(`✅ បាននាំចូលទិន្នន័យ JSON ចំនួន ${updated.length} ជួរ (រក្សាម៉ោង Start/End ដើមដដែល)!`);
+      return;
+    }
+
     state.subtitles = parsed;
     renderSubtitleTable();
     state.emit('subtitlesChanged', state.subtitles);

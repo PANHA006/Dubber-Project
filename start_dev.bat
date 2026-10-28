@@ -8,6 +8,7 @@ echo ===================================================
 echo.
 echo [*] Navigating to project directory...
 cd /d "%~dp0"
+if exist "%LOCALAPPDATA%\Programs\nodejs" set "PATH=%LOCALAPPDATA%\Programs\nodejs;%PATH%"
 
 :: Auto-clear port 5000 if occupied by previous session
 for /f "tokens=5" %%a in ('netstat -aon ^| findstr ":5000" ^| findstr "LISTENING"') do taskkill /f /pid %%a >nul 2>&1
