@@ -55,6 +55,7 @@ NET_CONCURRENCY = max(16, int(os.environ.get("TTS_NET_CONCURRENCY", str(TOTAL_CO
 CPU_CONCURRENCY = max(4, int(os.environ.get("TTS_CPU_CONCURRENCY", str(TOTAL_CORES)) or TOTAL_CORES))
 MAX_RETRIES = max(0, int(os.environ.get("TTS_MAX_RETRIES", "3") or 3))
 PROCESS_TIMEOUT = 120  # seconds before a helper binary is considered hung
+NET_TIMEOUT = max(10, int(os.environ.get("TTS_NET_TIMEOUT", "25") or 25))  # seconds before websocket synthesis is considered hung
 
 
 def resolve_voice(voice_str):
@@ -362,10 +363,21 @@ async def synthesize(text, voice, out_path, net_sem, rate=None):
                 if rate and rate != "+0%":
                     kwargs["rate"] = rate
                 communicator = edge_tts.Communicate(text, voice, **kwargs)
-                await communicator.save(out_path)
+                await asyncio.wait_for(communicator.save(out_path), timeout=float(NET_TIMEOUT))
             if os.path.isfile(out_path) and os.path.getsize(out_path) > 0:
                 return
             raise RuntimeError("Edge TTS produced no audio")
+        except (asyncio.TimeoutError, TimeoutError):
+            last_error = TimeoutError(f"Edge TTS connection timed out after {NET_TIMEOUT}s")
+            if os.path.isfile(out_path):
+                try:
+                    os.remove(out_path)
+                except Exception:
+                    pass
+            if attempt < MAX_RETRIES:
+                await asyncio.sleep(0.5 * (2 ** attempt))
+                continue
+            raise last_error
         except Exception as exc:
             last_error = exc
             if os.path.isfile(out_path):
@@ -607,7 +619,17 @@ async def main():
             pass
 
     async def run_one(item):
-        res = await generate_single_item(item, output_dir, net_sem, cpu_sem)
+        sub_id = item.get("id", "unknown")
+        try:
+            # Outer safeguard timeout (60s) guarantees no single item can permanently block the batch
+            res = await asyncio.wait_for(
+                generate_single_item(item, output_dir, net_sem, cpu_sem),
+                timeout=60.0
+            )
+        except asyncio.TimeoutError:
+            res = {"id": sub_id, "success": False, "error": "Item synthesis timed out after 60s"}
+        except Exception as exc:
+            res = {"id": sub_id, "success": False, "error": str(exc)}
         emit_progress(res)
         return res
 
