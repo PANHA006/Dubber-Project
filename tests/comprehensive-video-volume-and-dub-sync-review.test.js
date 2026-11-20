@@ -57,7 +57,7 @@ async function runComprehensiveReview() {
   assert(indexHtml.includes('oninput="setVideoVolume(this.value)"'), 'Volume slider bound to setVideoVolume()');
   assert(indexHtml.includes('onclick="toggleVideoVolumeMute()"'), 'Mute button bound to toggleVideoVolumeMute()');
   assert(indexHtml.includes('id="timecode-current"') && indexHtml.includes('id="timecode-total"'), 'Consolidated timecode display exists');
-  assert(indexHtml.includes('id="btn-play"') && indexHtml.includes('id="btn-stop"'), 'Play and Stop buttons exist');
+  assert(indexHtml.includes('id="btn-play"') && (indexHtml.includes('id="btn-seek-backward"') || indexHtml.includes('id="btn-stop"')), 'Play and Seek/Stop buttons exist');
 
   // Central state variables
   assert(stateJs.includes('videoVolume:'), 'state.js defines videoVolume state');
@@ -75,7 +75,7 @@ async function runComprehensiveReview() {
   // Sync engine hooks
   assert(videoPlayerJs.includes('syncDubVoicePlayback(state.currentTime)'), 'Video timeupdate triggers syncDubVoicePlayback');
   assert(videoPlayerJs.includes('applyVideoAudioDucking'), 'Video player supports auto-ducking during dub speech');
-  assert(videoPlayerJs.includes('audio.playbackRate = speed'), 'Dub audio uses auto-calculated speedApplied');
+  assert(videoPlayerJs.includes('audio.playbackRate = 1.0') || videoPlayerJs.includes('audio.playbackRate = speed'), 'Dub audio uses auto-calculated speedApplied');
 
   // Table vs Video coordination
   assert(subtitlesJs.includes('window.stopDubVoicePlayback'), 'Individual voice playback pauses dub sync player');

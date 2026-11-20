@@ -51,6 +51,7 @@ export const state = {
   videoUrl: null,
   videoName: '',
   dubbedVideoUrl: null,
+  masterAudioUrl: null,
   previewMode: 'before',
   isUploadingVideo: false,
   isGeneratingVideo: false,
@@ -62,11 +63,9 @@ export const state = {
   geminiApiKey: typeof localStorage !== 'undefined' ? (localStorage.getItem('gemini_api_key') || '') : '',
   groqApiKey: typeof localStorage !== 'undefined' ? (localStorage.getItem('groq_api_key') || '') : '',
   deepgramApiKey: typeof localStorage !== 'undefined' ? (localStorage.getItem('deepgram_api_key') || '') : '',
-  hfToken: typeof localStorage !== 'undefined' ? (localStorage.getItem('hf_token') || '') : '',
   serverHasGroqKey: false,
   serverHasGeminiKey: false,
   serverHasDeepgramKey: false,
-  serverHasHfToken: false,
   sttModel: typeof localStorage !== 'undefined' ? (localStorage.getItem('selected_stt_model') || 'groq-whisper-large-v3') : 'groq-whisper-large-v3',
   
   // Dubbing Settings

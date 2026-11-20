@@ -1,0 +1,52 @@
+{
+  "appId": "com.freedubber.pro",
+  "productName": "FREE Dubber Pro",
+  "directories": {
+    "output": "dist",
+    "buildResources": "build"
+  },
+  "files": [
+    "src/**/*",
+    "public/**/*",
+    "electron/**/*",
+    "package.json"
+  ],
+  "asar": true,
+  "asarUnpack": [
+    "src/workers/**/*"
+  ],
+  "extraResources": [
+    {
+      "from": ".venv",
+      "to": ".venv",
+      "filter": [
+        "**/*",
+        "!**/__pycache__/**"
+      ]
+    },
+    {
+      "from": "public/favicon.ico",
+      "to": "favicon.ico"
+    }
+  ],
+  "win": {
+    "target": "nsis",
+    "icon": "public/favicon.ico",
+    "requestedExecutionLevel": "asInvoker"
+  },
+  "nsis": {
+    "oneClick": false,
+    "perMachine": false,
+    "allowToChangeInstallationDirectory": true,
+    "createDesktopShortcut": "always",
+    "createStartMenuShortcut": true,
+    "shortcutName": "FREE Dubber Pro",
+    "installerIcon": "public/favicon.ico",
+    "uninstallerIcon": "public/favicon.ico",
+    "installerHeaderIcon": "public/favicon.ico",
+    "deleteAppDataOnUninstall": true,
+    "include": "build/installer.nsh",
+    "artifactName": "FREE-Dubber-Pro-Setup-${version}.${ext}",
+    "uninstallDisplayName": "FREE Dubber Pro"
+  }
+}

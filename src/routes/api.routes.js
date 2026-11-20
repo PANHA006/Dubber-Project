@@ -3,6 +3,7 @@ const router = express.Router();
 const multer = require('multer');
 const path = require('path');
 const os = require('os');
+const config = require('../config');
 const dubberController = require('../controllers/dubber.controller');
 
 const fs = require('fs');
@@ -16,7 +17,7 @@ const upload = multer({
 });
 
 // Configure multer storage for persistent video uploads (saved to storage/videos)
-const videoStorageDir = path.join(__dirname, '..', '..', 'storage', 'videos');
+const videoStorageDir = path.join(config.storageDir, 'videos');
 if (!fs.existsSync(videoStorageDir)) {
   fs.mkdirSync(videoStorageDir, { recursive: true });
 }
@@ -46,8 +47,11 @@ router.get('/health', dubberController.healthCheck);
 // System Status
 router.get('/status', dubberController.getStatus);
 
-// Local Faster-Whisper Transcription ($0 Offline)
-router.post('/transcribe', upload.single('audio'), dubberController.transcribe);
+// Local Faster-Whisper / Cloud Transcription ($0 Offline or Cloud, Server-Side CFR Sync)
+router.post('/transcribe', upload.fields([
+  { name: 'audio', maxCount: 1 },
+  { name: 'video', maxCount: 1 }
+]), dubberController.transcribe);
 
 // Gemini AI Translation (Text to Natural Khmer)
 router.post('/translate', dubberController.translate);
@@ -60,6 +64,9 @@ router.get('/keys/status', dubberController.checkKeyStatus);
 
 // Microsoft Edge TTS Voice Generation (Khmer Speech)
 router.post('/generate-voice', dubberController.generateVoice);
+
+// Pre-assembled Master Timeline Voice Audio (Full Video Duration Sync)
+router.post('/voice/assemble-master', dubberController.assembleMasterVoice);
 
 // Live Terminal Logging Bridge
 router.post('/terminal-log', dubberController.terminalLog);
@@ -84,7 +91,7 @@ router.delete('/history/:id', dubberController.deleteHistoryItem);
 router.post('/history/clear', dubberController.clearAllHistory);
 
 // RVC Local Character Voice Cloning & Library Management
-const rvcTempDir = path.join(__dirname, '..', '..', 'storage', 'temp');
+const rvcTempDir = path.join(config.storageDir, 'temp');
 if (!fs.existsSync(rvcTempDir)) {
   fs.mkdirSync(rvcTempDir, { recursive: true });
 }
@@ -102,5 +109,10 @@ router.post('/rvc/models/upload', rvcUpload.fields([
 ]), dubberController.uploadRVCModel);
 router.delete('/rvc/models/:id', dubberController.deleteRVCModel);
 router.post('/rvc/test-preview', dubberController.testRVCVoice);
+
+// System Tools & Dependency Updates (FFmpeg, Python, edge-tts, faster-whisper)
+router.get('/system/dependencies', dubberController.getSystemDependencies);
+router.post('/system/update-package', dubberController.updateSystemPackage);
+router.post('/system/update-all-ai', dubberController.updateAllAiEngines);
 
 module.exports = router;

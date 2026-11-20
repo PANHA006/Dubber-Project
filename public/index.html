@@ -4,7 +4,13 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>DAI Dubber Pro - Khmer Edition Workspace</title>
+  <title>FREE Dubber Pro - Khmer Edition Workspace</title>
+
+  <!-- Favicon & App Icons -->
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+  <link rel="alternate icon" type="image/x-icon" href="/favicon.ico" />
+  <link rel="shortcut icon" href="/favicon.ico" />
+  <link rel="apple-touch-icon" href="/favicon.svg" />
 
   <!-- Compiled Tailwind CSS from local CLI -->
   <link rel="stylesheet" href="/css/output.css" />
@@ -36,7 +42,7 @@
       </div>
       <div>
         <div class="flex items-center gap-1.5 leading-tight">
-          <span class="font-bold text-sm tracking-wide text-white">DAI Dubber Pro</span>
+          <span class="font-bold text-sm tracking-wide text-white">FREE Dubber Pro</span>
           <span class="text-xs">👑</span>
         </div>
         <p class="text-[10px] font-medium text-slate-400 leading-tight">Khmer Edition Workspace &ndash; PRO</p>
@@ -61,8 +67,8 @@
       </div>
 
       <!-- Export Video CTA Button -->
-      <button id="btn-export-video" onclick="openExportModal()" title="Export Dubbed Video (នាំចេញវីដេអូ)"
-        class="h-8 px-3 inline-flex items-center gap-1.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white rounded-lg border border-emerald-500/40 text-xs font-semibold shadow-sm transition active:scale-95 cursor-pointer">
+      <button id="btn-export-video" onclick="openExportModal()" title="សូមចុច Generate Video ជាមុនសិន ទើបអាច Export វីដេអូបាន (Please generate video first)" disabled
+        class="h-8 px-3 inline-flex items-center gap-1.5 bg-gradient-to-r from-emerald-600 to-teal-600 text-white rounded-lg border border-emerald-500/40 text-xs font-semibold shadow-sm transition opacity-40 cursor-not-allowed">
         <i data-lucide="download" class="w-3.5 h-3.5 text-emerald-200"></i>
         <span>Export Video</span>
       </button>
@@ -166,6 +172,14 @@
 
       <!-- Preferences & History Container (Grouped Aside Each Other) -->
       <div class="flex items-center gap-1.5 pl-2 border-l border-slate-800/80">
+        <!-- System Updates & Dependencies Button -->
+        <button id="btn-system-updates" onclick="window.openSystemUpdatesModal()" title="System Dependencies & Updates (FFmpeg & AI Engines)"
+          class="h-8 px-2.5 inline-flex items-center gap-1.5 bg-slate-800/80 hover:bg-slate-700 text-slate-200 rounded-lg border border-slate-700/80 text-xs font-medium shadow-sm transition active:scale-95 cursor-pointer">
+          <i data-lucide="arrow-down-to-line" class="w-3.5 h-3.5 text-cyan-400"></i>
+          <span>Updates</span>
+          <span id="system-update-indicator" class="w-2 h-2 rounded-full bg-emerald-400"></span>
+        </button>
+
         <!-- Data History Button -->
         <button id="btn-data-history" onclick="openHistoryModal()" title="Data History (ប្រវត្តិវីដេអូដែលបាន Render/Export)"
           class="h-8 px-3 inline-flex items-center gap-1.5 bg-slate-800/80 hover:bg-slate-700 text-slate-200 rounded-lg border border-slate-700/80 text-xs font-medium shadow-sm transition active:scale-95 cursor-pointer">
@@ -1084,6 +1098,84 @@
     </div>
   </div>
 
+  <!-- Deep Storage Cleaner Modal -->
+  <div id="clean-storage-modal" onclick="if (event.target === this) closeCleanStorageModal()"
+    class="fixed inset-0 bg-black/80 backdrop-blur-xs hidden items-center justify-center z-60 p-4">
+    <div class="bg-[#111728] border border-rose-500/40 rounded-2xl w-full max-w-md p-5 shadow-2xl text-xs space-y-4">
+      <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+        <div class="flex items-center gap-2 text-rose-400">
+          <div class="p-2 bg-rose-500/10 border border-rose-500/30 rounded-lg">
+            <i data-lucide="trash-2" class="w-4 h-4"></i>
+          </div>
+          <div>
+            <h3 class="text-sm font-semibold text-white">សម្អាតទិន្នន័យ & Cache (Deep Clean)</h3>
+            <p class="text-[11px] text-slate-400">ជ្រើសរើសទិន្នន័យដែលលោកអ្នកចង់លុបសម្អាតចេញពី Disk</p>
+          </div>
+        </div>
+        <button onclick="closeCleanStorageModal()" class="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition cursor-pointer">
+          <i data-lucide="x" class="w-4 h-4"></i>
+        </button>
+      </div>
+
+      <div class="space-y-2.5">
+        <label class="flex items-start gap-2.5 p-2.5 rounded-xl bg-slate-900/60 border border-slate-800 hover:border-slate-700 cursor-pointer transition">
+          <input type="checkbox" id="clean-opt-videos" checked class="mt-0.5 rounded border-slate-700 text-rose-500 focus:ring-0">
+          <div class="flex-1">
+            <div class="flex items-center justify-between">
+              <span class="font-medium text-slate-200">ប្រវត្តិវីដេអូ Dubbed & Exports</span>
+              <span id="clean-stat-videos" class="font-mono text-[10px] text-slate-400">0 MB</span>
+            </div>
+            <p class="text-[10px] text-slate-500 mt-0.5">លុបវីដេអូដែលបាន Render និង Export ចេញពី Disk</p>
+          </div>
+        </label>
+
+        <label class="flex items-start gap-2.5 p-2.5 rounded-xl bg-slate-900/60 border border-slate-800 hover:border-slate-700 cursor-pointer transition">
+          <input type="checkbox" id="clean-opt-voices" checked class="mt-0.5 rounded border-slate-700 text-rose-500 focus:ring-0">
+          <div class="flex-1">
+            <div class="flex items-center justify-between">
+              <span class="font-medium text-slate-200">ឯកសារសំឡេង AI ទាំងអស់ (Voices)</span>
+              <span id="clean-stat-voices" class="font-mono text-[10px] text-rose-300">0 MB</span>
+            </div>
+            <p class="text-[10px] text-slate-500 mt-0.5">សម្អាតសំឡេងខ្មែរ Piseth/Sreymom និង Master Audio ចាស់ៗ</p>
+          </div>
+        </label>
+
+        <label class="flex items-start gap-2.5 p-2.5 rounded-xl bg-slate-900/60 border border-slate-800 hover:border-slate-700 cursor-pointer transition">
+          <input type="checkbox" id="clean-opt-temp" checked class="mt-0.5 rounded border-slate-700 text-rose-500 focus:ring-0">
+          <div class="flex-1">
+            <div class="flex items-center justify-between">
+              <span class="font-medium text-slate-200">ឯកសារបណ្តោះអាសន្ន & Cache លាក់ (Temp)</span>
+              <span id="clean-stat-temp" class="font-mono text-[10px] text-slate-400">0 MB</span>
+            </div>
+            <p class="text-[10px] text-slate-500 mt-0.5">សម្អាត stems, audio chunks, payloads និង cache បង្កើនល្បឿន</p>
+          </div>
+        </label>
+
+        <label class="flex items-start gap-2.5 p-2.5 rounded-xl bg-slate-900/60 border border-slate-800 hover:border-slate-700 cursor-pointer transition">
+          <input type="checkbox" id="clean-opt-project" checked class="mt-0.5 rounded border-slate-700 text-rose-500 focus:ring-0">
+          <div class="flex-1">
+            <div class="flex items-center justify-between">
+              <span class="font-medium text-slate-200">Reset Project & Browser Autosave</span>
+              <span class="font-mono text-[10px] text-slate-400">LocalStorage</span>
+            </div>
+            <p class="text-[10px] text-slate-500 mt-0.5">សម្អាតទិន្នន័យ autosave គម្រោងចាស់លើ Browser ដើម្បីចាប់ផ្តើមថ្មី</p>
+          </div>
+        </label>
+      </div>
+
+      <div class="flex items-center justify-between pt-3 border-t border-slate-800 text-[11px]">
+        <button type="button" onclick="toggleSelectAllCleanOptions()" class="text-indigo-400 hover:text-indigo-300 underline cursor-pointer">Select All / Deselect</button>
+        <div class="flex items-center gap-2">
+          <button type="button" onclick="closeCleanStorageModal()" class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 transition cursor-pointer">បោះបង់</button>
+          <button type="button" id="btn-confirm-clean-storage" onclick="executeCleanStorage()" class="px-3 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-500 text-white font-medium transition cursor-pointer flex items-center gap-1.5 shadow-md shadow-rose-950/40">
+            <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+            <span>សម្អាតទិន្នន័យ</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- Character Voice Library Modal (RVC Voice Cloning) -->
   <div id="voice-library-modal" onclick="if (event.target === this) closeVoiceLibraryModal()"
     class="fixed inset-0 bg-black/75 backdrop-blur-xs hidden items-center justify-center z-50 p-4">
@@ -1188,6 +1280,130 @@
         </button>
       </div>
 
+    </div>
+  </div>
+
+  <!-- System Updates & Dependencies Modal -->
+  <div id="system-updates-modal" onclick="if (event.target === this) closeSystemUpdatesModal()"
+    class="fixed inset-0 bg-black/75 backdrop-blur-xs hidden items-center justify-center z-50 p-4">
+    <div class="bg-[#111728] border border-slate-700/80 rounded-2xl w-full max-w-2xl p-5 shadow-2xl text-xs space-y-4 max-h-[92vh] flex flex-col">
+      <!-- Modal Header -->
+      <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800 pb-3 shrink-0">
+        <div class="flex items-center gap-2.5 min-w-0">
+          <div class="p-2 bg-cyan-500/10 border border-cyan-500/30 rounded-lg text-cyan-400 shrink-0">
+            <i data-lucide="cpu" class="w-4 h-4"></i>
+          </div>
+          <div class="min-w-0">
+            <div class="flex items-center gap-2 flex-wrap sm:flex-nowrap">
+              <h3 class="text-sm font-semibold text-white whitespace-nowrap">System Dependencies & Updates</h3>
+              <span class="text-[10px] font-mono px-2 py-0.5 rounded-full bg-cyan-500/10 text-cyan-300 border border-cyan-500/20 whitespace-nowrap shrink-0">AI Core Engines</span>
+            </div>
+            <p class="text-[11px] text-slate-400 mt-0.5 truncate sm:whitespace-normal">ត្រួតពិនិត្យ និងអាប់ដេតកញ្ចប់ AI (Edge-TTS, Faster-Whisper) & FFmpeg Core</p>
+          </div>
+        </div>
+
+        <div class="flex items-center gap-2 shrink-0">
+          <button type="button" onclick="window.loadSystemDependencies(true)" title="ត្រួតពិនិត្យកំណែថ្មីតាម Online"
+            class="h-9 px-3 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700/80 text-xs font-medium flex items-center gap-1.5 transition cursor-pointer active:scale-95 shrink-0">
+            <i id="btn-refresh-dependencies" data-lucide="refresh-cw" class="w-3.5 h-3.5"></i>
+            <span class="hidden sm:inline">Check Online</span>
+          </button>
+
+          <button id="btn-update-all-ai" onclick="window.updateAllAiEngines()" title="1-Click Update សម្រាប់ edge-tts និង faster-whisper"
+            class="h-9 px-3.5 rounded-lg bg-gradient-to-r from-cyan-600 to-indigo-600 hover:from-cyan-500 hover:to-indigo-500 text-white text-xs font-semibold flex items-center gap-1.5 shadow-md shadow-cyan-900/30 transition cursor-pointer active:scale-95 border border-cyan-500/40 shrink-0">
+            <i data-lucide="zap" class="w-3.5 h-3.5 text-amber-300"></i>
+            <span>Update All AI Engines</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Live Progress / Status Banner Bar (Shows during update) -->
+      <div id="system-update-progress-banner" class="hidden shrink-0 rounded-xl bg-gradient-to-r from-cyan-950/70 via-slate-900/90 to-indigo-950/70 border border-cyan-500/40 p-3 shadow-lg shadow-cyan-950/40 transition-all duration-300">
+        <div class="flex items-center justify-between gap-3">
+          <div class="flex items-center gap-2.5 min-w-0">
+            <div id="system-update-banner-icon-box" class="p-2 rounded-lg bg-cyan-500/15 border border-cyan-500/30 text-cyan-400 shrink-0">
+              <i id="system-update-banner-icon" data-lucide="refresh-cw" class="w-4 h-4 animate-spin"></i>
+            </div>
+            <div class="min-w-0">
+              <div class="flex items-center gap-2">
+                <span id="system-update-status-title" class="font-semibold text-slate-100 text-xs">កំពុងដំណើរការអាប់ដេត...</span>
+                <span id="system-update-status-badge" class="px-2 py-0.5 rounded-full text-[10px] font-mono bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 whitespace-nowrap">In Progress</span>
+              </div>
+              <p id="system-update-status-text" class="text-[11px] text-slate-300 truncate mt-0.5">កំពុងទាញយក និងដំឡើងកញ្ចប់ពី Official PyPI...</p>
+            </div>
+          </div>
+          <div class="shrink-0 flex items-center gap-2">
+            <span id="system-update-progress-percent" class="text-xs font-mono font-bold text-cyan-300">Updating...</span>
+          </div>
+        </div>
+        <!-- Animated Progress Track -->
+        <div class="w-full bg-slate-800/80 rounded-full h-1.5 mt-2.5 overflow-hidden border border-slate-700/60">
+          <div id="system-update-progress-fill" class="bg-gradient-to-r from-cyan-400 via-indigo-400 to-cyan-300 h-full rounded-full transition-all duration-500 animate-pulse w-full"></div>
+        </div>
+      </div>
+
+      <!-- Scrollable Content Area -->
+      <div class="space-y-4 overflow-y-auto pr-1 flex-1">
+        <!-- Section 1: AI Engines (Python .venv) -->
+        <div class="space-y-2">
+          <div class="flex items-center justify-between text-xs font-semibold text-slate-300 px-1">
+            <span class="flex items-center gap-1.5">
+              <i data-lucide="cpu" class="w-3.5 h-3.5 text-cyan-400"></i>
+              <span>កញ្ចប់ AI Voice & Speech (.venv)</span>
+            </span>
+            <span class="text-[10.5px] text-slate-400 font-normal">Official PyPI Repositories</span>
+          </div>
+
+          <!-- Dynamic Packages List -->
+          <div id="dependencies-list-container" class="space-y-2">
+            <div class="p-6 text-center text-slate-400 text-xs flex items-center justify-center gap-2">
+              <div class="w-4 h-4 border-2 border-cyan-400 border-t-transparent rounded-full animate-spin"></div>
+              <span>កំពុងទាញយកព័ត៌មានកញ្ចប់ AI ពីប្រព័ន្ធ...</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Section 2: FFmpeg Core -->
+        <div class="space-y-2 pt-2 border-t border-slate-800/80">
+          <div class="flex items-center justify-between text-xs font-semibold text-slate-300 px-1">
+            <span class="flex items-center gap-1.5">
+              <i data-lucide="film" class="w-3.5 h-3.5 text-indigo-400"></i>
+              <span>Media Processing Engine (FFmpeg & FFprobe)</span>
+            </span>
+            <span class="text-[10px] font-mono px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">Active & Ready</span>
+          </div>
+
+          <div class="p-3.5 rounded-xl bg-slate-900/80 border border-slate-800 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+            <div class="space-y-1">
+              <div class="flex items-center gap-2">
+                <span class="font-semibold text-slate-200 text-xs font-mono">FFmpeg Windows Full Build</span>
+                <span class="text-[10px] text-slate-400">(www.gyan.dev)</span>
+              </div>
+              <p class="text-[11px] text-slate-400 leading-relaxed">
+                ប្រើប្រាស់សម្រាប់បំបែកសំឡេង (Audio Extraction), ផ្គុំសំឡេងមេ (Stem Batching), Smart Ducking និង Render វីដេអូចុងក្រោយ។
+              </p>
+            </div>
+            <div class="shrink-0 flex items-center gap-2 w-full sm:w-auto justify-end">
+              <a href="https://www.gyan.dev/ffmpeg/builds/" target="_blank" rel="noopener noreferrer"
+                class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700/80 text-xs font-medium flex items-center gap-1.5 transition">
+                <i data-lucide="external-link" class="w-3.5 h-3.5"></i>
+                <span>Gyan.dev Builds</span>
+              </a>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Modal Footer -->
+      <div class="flex items-center justify-between pt-3 border-t border-slate-800 shrink-0">
+        <span class="text-[10.5px] text-slate-400">
+          💡 ការអាប់ដេតដំណើរការតែក្នុង <code class="text-slate-300 font-mono">.venv</code> ដោយមិនប៉ះពាល់ដល់ប្រព័ន្ធកុំព្យូទ័រធំឡើយ
+        </span>
+        <button type="button" onclick="closeSystemUpdatesModal()"
+          class="px-4 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 font-medium text-xs transition cursor-pointer">
+          បិទ (Close)
+        </button>
+      </div>
     </div>
   </div>
 

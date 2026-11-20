@@ -55,7 +55,10 @@ export function loadVideoFromUrl(url, name = '', duration = 0) {
     if (totalElem) totalElem.textContent = formatTimecodeDisplay(duration);
   }
 
+  const savedVolumeFraction = state.videoVolume !== undefined ? state.videoVolume : 1.0;
   mainVideo.src = url;
+  mainVideo.volume = savedVolumeFraction;
+  mainVideo.muted = state.isMuted || savedVolumeFraction === 0;
   mainVideo.load();
   mainVideo.classList.remove('hidden');
   document.getElementById('preview-canvas')?.classList.add('hidden');
@@ -69,6 +72,8 @@ export function loadVideoFromUrl(url, name = '', duration = 0) {
 
   mainVideo.onloadedmetadata = () => {
     state.duration = mainVideo.duration || duration || 0.0;
+    mainVideo.volume = state.videoVolume !== undefined ? state.videoVolume : 1.0;
+    mainVideo.muted = state.isMuted || state.videoVolume === 0;
     const totalElem = document.getElementById('timecode-total');
     if (totalElem) totalElem.textContent = formatTimecodeDisplay(state.duration);
     const resElem = document.getElementById('video-resolution');
@@ -136,6 +141,7 @@ export function switchPreviewMode(mode) {
     const wasPlaying = mainVideo ? !mainVideo.paused : false;
 
     state.previewMode = 'before';
+    stopDubVoicePlayback();
 
     // Update switcher styling
     if (btnBefore) {
@@ -150,9 +156,14 @@ export function switchPreviewMode(mode) {
     }
 
     if (mainVideo && state.videoUrl) {
+      const savedVolumeFraction = state.videoVolume !== undefined ? state.videoVolume : 1.0;
       mainVideo.src = state.videoUrl;
+      mainVideo.volume = savedVolumeFraction;
+      mainVideo.muted = state.isMuted || savedVolumeFraction === 0;
       const onLoaded = () => {
         mainVideo.currentTime = curTime;
+        mainVideo.volume = state.videoVolume !== undefined ? state.videoVolume : 1.0;
+        mainVideo.muted = state.isMuted || state.videoVolume === 0;
         if (wasPlaying) mainVideo.play().catch(() => {});
         mainVideo.removeEventListener('loadedmetadata', onLoaded);
       };
@@ -253,13 +264,22 @@ export async function cancelCurrentVideo() {
     state.videoName = '';
     state.currentVideoFile = null;
     state.dubbedVideoUrl = null;
+    state.masterAudioUrl = null;
+    if (masterTimelineAudio) {
+      try {
+        masterTimelineAudio.pause();
+        masterTimelineAudio.src = '';
+      } catch (_) {}
+      masterTimelineAudio = null;
+    }
     state.duration = 0.0;
     state.currentTime = 0.0;
     state.subtitles = [];
     state.isPlaying = false;
 
-    // 6. Update Cancel button visibility
+    // 6. Update Cancel button and Export button visibility
     updateCancelVideoBtnVisibility();
+    window.updateExportButtonState?.();
 
     // 7. Re-render Subtitle Table (shows empty state)
     window.renderSubtitleTable?.();
@@ -411,7 +431,10 @@ export function initVideoPlayer() {
         type: file.type || 'video/mp4'
       });
       const url = URL.createObjectURL(file);
+      const savedVolumeFraction = state.videoVolume !== undefined ? state.videoVolume : 1.0;
       mainVideo.src = url;
+      mainVideo.volume = savedVolumeFraction;
+      mainVideo.muted = state.isMuted || savedVolumeFraction === 0;
       mainVideo.load();
       mainVideo.classList.remove('hidden');
       previewCanvas?.classList.add('hidden');
@@ -429,6 +452,8 @@ export function initVideoPlayer() {
 
       mainVideo.onloadedmetadata = () => {
         state.duration = mainVideo.duration || 0.0;
+        mainVideo.volume = state.videoVolume !== undefined ? state.videoVolume : 1.0;
+        mainVideo.muted = state.isMuted || state.videoVolume === 0;
         document.getElementById('timecode-total').textContent = formatTimecodeDisplay(state.duration);
         document.getElementById('video-resolution').textContent = `${mainVideo.videoWidth}x${mainVideo.videoHeight}`;
         updateCancelVideoBtnVisibility();
@@ -522,10 +547,26 @@ export function seekTo(seconds) {
     }
   }
 
+  if (masterTimelineAudio) {
+    try {
+      if (!isNaN(masterTimelineAudio.duration) && masterTimelineAudio.duration > 0) {
+        masterTimelineAudio.currentTime = state.currentTime;
+      }
+    } catch (_) {}
+  }
+
   updateActiveSubtitleDisplay();
   syncDubVoicePlayback(state.currentTime);
   state.emit('timeUpdated', state.currentTime);
   drawCanvasPreview();
+}
+
+export function seekRelative(deltaSeconds) {
+  const current = typeof state.currentTime === 'number' ? state.currentTime : 0;
+  const maxDur = (typeof state.duration === 'number' && state.duration > 0) ? state.duration : 999999;
+  const target = Math.max(0, Math.min(current + deltaSeconds, maxDur));
+  seekTo(target);
+  window.showToast?.(deltaSeconds > 0 ? `ទៅមុខ +${deltaSeconds}s` : `ថយក្រោយ ${deltaSeconds}s`);
 }
 
 export function togglePlay() {
@@ -537,6 +578,11 @@ export function togglePlay() {
     if (animationFrameId) cancelAnimationFrame(animationFrameId);
 
     if (mainVideo.paused) {
+      if (!state.isMuted && (state.videoVolume === undefined || state.videoVolume > 0)) {
+        mainVideo.muted = false;
+        mainVideo.volume = state.videoVolume !== undefined ? state.videoVolume : 1.0;
+      }
+
       mainVideo.play().then(() => {
         state.isPlaying = true;
         updatePlayButtonUI(true);
@@ -550,6 +596,7 @@ export function togglePlay() {
           state.isPlaying = true;
           updatePlayButtonUI(true);
           syncDubVoicePlayback(state.currentTime);
+          updateVideoVolumeUI(0);
           window.showToast?.('កំពុងចាក់ Playback (Muted)');
         }).catch((e) => {
           window.showToast?.('មិនអាចចាក់វីដេអូបានទេ៖ ' + e.message);
@@ -819,8 +866,42 @@ window.toggleVideoVolumeMute = toggleVideoVolumeMute;
 
 let activeDubAudio = null;
 let activeDubSubId = null;
+let masterTimelineAudio = null;
+
+export function loadMasterAudioTrack(url) {
+  if (masterTimelineAudio) {
+    try {
+      masterTimelineAudio.pause();
+      masterTimelineAudio.src = '';
+    } catch (_) {}
+    masterTimelineAudio = null;
+  }
+  if (!url) return;
+
+  try {
+    masterTimelineAudio = new Audio(url);
+    masterTimelineAudio.preload = 'auto';
+    masterTimelineAudio.volume = state.dubVolume !== undefined ? state.dubVolume : 1.0;
+
+    masterTimelineAudio.addEventListener('error', (e) => {
+      console.warn('Master timeline audio track error, falling back to per-clip audio:', e);
+      masterTimelineAudio = null;
+    });
+
+    logToTerminal('CLIENT:MASTER_AUDIO_LOADED', `Master timeline audio track loaded for preview: ${url}`);
+  } catch (err) {
+    console.warn('Failed to load master audio track:', err);
+    masterTimelineAudio = null;
+  }
+}
 
 export function stopDubVoicePlayback() {
+  if (masterTimelineAudio) {
+    try {
+      masterTimelineAudio.pause();
+      masterTimelineAudio.currentTime = 0;
+    } catch (_) {}
+  }
   if (activeDubAudio) {
     try {
       activeDubAudio.pause();
@@ -834,6 +915,11 @@ export function stopDubVoicePlayback() {
 }
 
 export function pauseDubVoicePlayback() {
+  if (masterTimelineAudio && !masterTimelineAudio.paused) {
+    try {
+      masterTimelineAudio.pause();
+    } catch (_) {}
+  }
   if (activeDubAudio && !activeDubAudio.paused) {
     try {
       activeDubAudio.pause();
@@ -846,6 +932,11 @@ function applyVideoAudioDucking() {
   if (state.previewMode === 'after') return;
   const mainVideo = document.getElementById('main-video');
   if (mainVideo && !mainVideo.muted && state.videoVolume > 0) {
+    const hasDubbedVoices = Array.isArray(state.subtitles) && state.subtitles.some(s => s.audioUrl || s.status === 'Ready');
+    if (!hasDubbedVoices) {
+      mainVideo.volume = state.videoVolume;
+      return;
+    }
     if (state.dubbingSettings?.removeSpokenVoice) {
       // Mute Voice ON: completely mute original voice (100% silence) during speech
       mainVideo.volume = 0;
@@ -858,6 +949,11 @@ function applyVideoAudioDucking() {
 function restoreVideoAudioDucking() {
   const mainVideo = document.getElementById('main-video');
   if (mainVideo && !mainVideo.muted) {
+    const hasDubbedVoices = Array.isArray(state.subtitles) && state.subtitles.some(s => s.audioUrl || s.status === 'Ready');
+    if (!hasDubbedVoices) {
+      mainVideo.volume = state.videoVolume !== undefined ? state.videoVolume : 1.0;
+      return;
+    }
     if (state.dubbingSettings?.removeSpokenVoice) {
       // Outside speech: restore to user-configured BGM Volume (e.g. 15% -> 0.15)
       const bgVol = typeof state.dubbingSettings.bgVolume === 'number' ? state.dubbingSettings.bgVolume : 8;
@@ -873,12 +969,77 @@ export function syncDubVoicePlayback(currentTime) {
   // In 'after' mode, the dubbed video already contains the mixed voice audio track.
   // Never play overlay voice clips in 'after' mode to prevent double/echo sound profile voice.
   if (state.previewMode === 'after') {
+    if (masterTimelineAudio && !masterTimelineAudio.paused) {
+      try { masterTimelineAudio.pause(); } catch (_) {}
+    }
     if (activeDubAudio) {
       stopDubVoicePlayback();
     }
     return;
   }
 
+  // If there are no dubbed subtitles or voice files generated yet, keep normal video volume and exit
+  const hasDubbedVoices = Array.isArray(state.subtitles) && state.subtitles.some(s => s.audioUrl || s.status === 'Ready');
+  if (!hasDubbedVoices) {
+    if (masterTimelineAudio && !masterTimelineAudio.paused) {
+      try { masterTimelineAudio.pause(); } catch (_) {}
+    }
+    if (activeDubAudio) {
+      stopDubVoicePlayback();
+    }
+    const mainVideo = document.getElementById('main-video');
+    if (mainVideo && !mainVideo.muted) {
+      mainVideo.volume = state.videoVolume !== undefined ? state.videoVolume : 1.0;
+    }
+    return;
+  }
+
+  // --- METHOD A: MASTER TIMELINE AUDIO LOCKSTEP SYNC (Zero-Lag, Instant Seek) ---
+  if (state.masterAudioUrl && masterTimelineAudio) {
+    if (!state.isPlaying) {
+      pauseDubVoicePlayback();
+      return;
+    }
+
+    // Volume synchronization
+    const targetDubVol = state.dubVolume !== undefined ? state.dubVolume : 1.0;
+    if (masterTimelineAudio.volume !== targetDubVol) {
+      masterTimelineAudio.volume = targetDubVol;
+    }
+
+    // Ducking / Mute original audio during speech windows
+    const PAD = 0.25;
+    const isInsideSpeech = state.subtitles.some(s => {
+      return (s.audioUrl || s.status === 'Ready') &&
+             currentTime >= (s.startSec - PAD) &&
+             currentTime < (s.endSec + PAD);
+    });
+
+    if (isInsideSpeech) {
+      applyVideoAudioDucking();
+    } else {
+      restoreVideoAudioDucking();
+    }
+
+    // Tight lockstep sync with main video
+    const drift = Math.abs(masterTimelineAudio.currentTime - currentTime);
+    if (drift > 0.15) {
+      try {
+        if (!isNaN(masterTimelineAudio.duration) && masterTimelineAudio.duration > 0) {
+          masterTimelineAudio.currentTime = currentTime;
+        }
+      } catch (_) {}
+    }
+
+    if (masterTimelineAudio.paused) {
+      masterTimelineAudio.play().catch(err => {
+        console.warn('Master audio play blocked or pending:', err.message);
+      });
+    }
+    return;
+  }
+
+  // --- METHOD B: INDIVIDUAL AUDIO CLIPS FALLBACK (When Master not yet built) ---
   if (!state.isPlaying) {
     pauseDubVoicePlayback();
     return;
@@ -909,6 +1070,16 @@ export function syncDubVoicePlayback(currentTime) {
   // Still within subtitle speech window: ensure original voice stays ducked/muted
   applyVideoAudioDucking();
 
+  // In the pre-speech cushion window, keep original video ducked/muted, but wait until startSec
+  if (currentTime < currentSub.startSec) {
+    if (activeDubAudio) {
+      pauseDubVoicePlayback();
+      activeDubAudio = null;
+      activeDubSubId = null;
+    }
+    return;
+  }
+
   const audioUrl = currentSub.audioUrl || `/storage/voices/voice_${String(currentSub.id).replace(/[:/\\\s]/g, '_')}.mp3`;
   const timeOffset = Math.max(0, currentTime - currentSub.startSec);
 
@@ -933,7 +1104,6 @@ export function syncDubVoicePlayback(currentTime) {
 
   try {
     const audio = new Audio(audioUrl);
-    // Audio file on disk is already tempo-adjusted by FFmpeg
     audio.playbackRate = 1.0;
     audio.volume = state.dubVolume !== undefined ? state.dubVolume : 1.0;
 
@@ -953,8 +1123,6 @@ export function syncDubVoicePlayback(currentTime) {
       if (activeDubSubId === currentSub.id) {
         activeDubAudio = null;
         activeDubSubId = null;
-        // Keep video ducked/muted until currentTime exits [startSec - PAD_BEFORE -> endSec + PAD_AFTER]
-        // This prevents hearing any trailing original speech if AI finished slightly earlier.
       }
     };
   } catch (err) {
@@ -963,8 +1131,10 @@ export function syncDubVoicePlayback(currentTime) {
 }
 
 // Expose on window for global coordination
+window.seekRelative = seekRelative;
 window.syncDubVoicePlayback = syncDubVoicePlayback;
 window.stopDubVoicePlayback = stopDubVoicePlayback;
 window.pauseDubVoicePlayback = pauseDubVoicePlayback;
+window.loadMasterAudioTrack = loadMasterAudioTrack;
 window.applyVideoAudioDucking = applyVideoAudioDucking;
 window.restoreVideoAudioDucking = restoreVideoAudioDucking;

@@ -5,7 +5,7 @@ const { formatTerminalLog } = require('../utils/terminal-logger');
 
 class WhisperService {
   constructor() {
-    this.workerPath = path.join(__dirname, '../workers/whisper_transcriber.py');
+    this.workerPath = path.join(__dirname, '../workers/whisper_transcriber.py').replace('app.asar', 'app.asar.unpacked');
   }
 
   /**

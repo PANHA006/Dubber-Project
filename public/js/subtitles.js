@@ -98,7 +98,7 @@ export function applySmartEndPadding(subtitles, endPadding = 0.70, videoDuration
   }
 
   const pad = Math.max(0, Number(endPadding) || 0);
-  const SAFETY_GAP = 0.05; // 50ms buffer to prevent speech overlapping next row
+  const MIN_DIALOGUE_GAP = 0.12; // 120ms natural breathing buffer before next speaker
   const n = subtitles.length;
 
   for (let i = 0; i < n; i++) {
@@ -122,13 +122,17 @@ export function applySmartEndPadding(subtitles, endPadding = 0.70, videoDuration
     const availableGap = nextStart - rawEnd;
     let newEnd = rawEnd;
 
-    if (availableGap > SAFETY_GAP) {
-      const maxAllowed = Math.max(0, availableGap - SAFETY_GAP);
-      const paddingToAdd = Math.min(pad, maxAllowed);
-      newEnd = rawEnd + paddingToAdd;
+    // Smart Gap Redistribution:
+    // When 2 dialogue lines are close (< 0.5s), don't aggressively push end padding.
+    // Preserve at least MIN_DIALOGUE_GAP so consecutive lines don't collide or bleed.
+    if (availableGap > MIN_DIALOGUE_GAP) {
+      const maxAllowed = availableGap - MIN_DIALOGUE_GAP;
+      // Proportional cushion: for tight gaps, take at most 60% of available gap to leave natural pause
+      const allowedCushion = availableGap < 0.5 ? Math.min(pad, maxAllowed * 0.6) : Math.min(pad, maxAllowed);
+      newEnd = rawEnd + allowedCushion;
     } else if (rawEnd > nextStart) {
       // Avoid existing collision from noisy segment boundaries
-      newEnd = Math.max(rawStart, nextStart - SAFETY_GAP);
+      newEnd = Math.max(rawStart, nextStart - MIN_DIALOGUE_GAP);
     }
 
     // Round to 3 decimal places (milliseconds)
@@ -216,6 +220,20 @@ export function playVoice(subId) {
 const PLAY_ICON_SVG = '<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>';
 const PAUSE_ICON_SVG = '<svg class="w-3.5 h-3.5 animate-bounce" fill="none" stroke="currentColor" viewBox="0 0 24 24"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>';
 
+function renderSpeedBadge(speed) {
+  const sp = parseFloat(speed) || 1.0;
+  if (sp <= 1.04) {
+    return `<span class="shrink-0 text-[10px] font-mono font-medium px-2 py-0.5 rounded-full bg-slate-800 text-slate-400 border border-slate-700/60 whitespace-nowrap select-none" title="ល្បឿនធម្មជាតិ: 1.0x">1.0x</span>`;
+  }
+  if (sp <= 1.25) {
+    return `<span class="shrink-0 text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-cyan-500/15 text-cyan-300 border border-cyan-500/30 whitespace-nowrap shadow-sm shadow-cyan-500/10 select-none" title="Auto-Speed: បានបង្កើនល្បឿន ${sp}x ដើម្បីតម្រូវតាមពេលវេលា Start/End">⚡${sp}x</span>`;
+  }
+  if (sp <= 1.50) {
+    return `<span class="shrink-0 text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-300 border border-amber-500/35 whitespace-nowrap shadow-sm shadow-amber-500/10 select-none" title="Auto-Speed (លឿន): បានបង្កើនល្បឿន ${sp}x ដើម្បីតម្រូវតាមពេលវេលា Start/End">⚡${sp}x</span>`;
+  }
+  return `<span class="shrink-0 text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-orange-500/20 text-orange-300 border border-orange-500/40 whitespace-nowrap shadow-sm shadow-orange-500/15 select-none" title="Auto-Speed (លឿនអតិបរមា 1.7x): បានបង្កើនល្បឿន ${sp}x ដើម្បីតម្រូវតាមពេលវេលា Start/End">⚡${sp}x</span>`;
+}
+
 export function createSubtitleRowElement(sub, idx) {
   const tr = document.createElement('tr');
   tr.className = `group hover:bg-slate-800/40 transition-colors ${sub.selected ? 'bg-indigo-950/20' : ''}`;
@@ -229,10 +247,10 @@ export function createSubtitleRowElement(sub, idx) {
     <td class="py-2.5 px-3 text-center">
       <input type="checkbox" ${sub.selected ? 'checked' : ''} data-id="${sub.id}" class="sub-row-check rounded border-slate-700 bg-slate-800 text-indigo-600 focus:ring-0 focus:ring-offset-0 cursor-pointer" />
     </td>
-    <td class="py-2 px-1.5 font-mono text-slate-300 text-[11px] w-[68px] min-w-[68px]">
+    <td class="py-2 px-1.5 font-mono text-slate-300 text-[11px] w-[92px] min-w-[92px]">
       <input type="text" value="${sub.start}" data-field="start" data-id="${sub.id}" class="sub-time-input bg-transparent hover:bg-slate-800/80 focus:bg-slate-800 focus:border-indigo-500 border border-transparent rounded px-1 py-1 w-full font-mono outline-hidden text-[11px] tabular-nums" />
     </td>
-    <td class="py-2 px-1.5 font-mono text-slate-300 text-[11px] w-[68px] min-w-[68px]">
+    <td class="py-2 px-1.5 font-mono text-slate-300 text-[11px] w-[92px] min-w-[92px]">
       <input type="text" value="${sub.end}" data-field="end" data-id="${sub.id}" class="sub-time-input bg-transparent hover:bg-slate-800/80 focus:bg-slate-800 focus:border-indigo-500 border border-transparent rounded px-1 py-1 w-full font-mono outline-hidden text-[11px] tabular-nums" />
     </td>
     <td class="py-2 px-3 align-top">
@@ -267,53 +285,56 @@ export function createSubtitleRowElement(sub, idx) {
         <svg class="w-3.5 h-3.5 text-slate-400 absolute right-2 top-2.5 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
       </div>
     </td>
-    <td class="py-2 px-3 w-28 text-center">
+    <td class="py-2 px-2.5 w-32 min-w-[120px] text-center">
       ${
         isReady
           ? `
-          <div class="inline-flex items-center gap-1.5">
+          <div class="inline-flex items-center justify-center gap-2 whitespace-nowrap">
             <button onclick="window.playVoice('${sub.id}')"
               title="ចុចដើម្បីស្តាប់សំឡេង AI (${sub.voice}${sub.speedApplied > 1.04 ? ' | ល្បឿន ' + sub.speedApplied + 'x' : ''})"
-              class="sub-voice-play-btn inline-flex items-center justify-center gap-1.5 px-2.5 py-1 rounded-lg ${
+              class="sub-voice-play-btn shrink-0 inline-flex items-center justify-center w-7 h-7 rounded-lg ${
                 isPlaying
                   ? 'bg-emerald-600 text-white shadow-md shadow-emerald-500/30 ring-1 ring-emerald-400'
                   : 'bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/40 text-emerald-400 hover:text-emerald-300'
-              } font-medium text-xs transition active:scale-95 cursor-pointer">
+              } transition active:scale-95 cursor-pointer">
               ${isPlaying ? PAUSE_ICON_SVG : PLAY_ICON_SVG}
-              <span class="text-[11px] font-mono font-bold">${isPlaying ? 'Playing' : 'Play'}</span>
             </button>
-            ${
-              sub.speedApplied && sub.speedApplied > 1.04
-                ? `<span class="text-[10px] font-mono px-1.5 py-0.5 rounded bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 font-bold" title="Auto-Speed: បានបង្កើនល្បឿន ${sub.speedApplied}x ដើម្បីតម្រូវតាមពេលវេលា Start/End">⚡${sub.speedApplied}x</span>`
-                : `<span class="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-800/90 text-slate-400 border border-slate-700/50" title="ល្បឿនធម្មជាតិ: 1.0x">1.0x</span>`
-            }
+            ${renderSpeedBadge(sub.speedApplied)}
           </div>
           `
           : isModified
           ? `
-          <div class="inline-flex items-center gap-1.5">
+          <div class="inline-flex items-center justify-center gap-2 whitespace-nowrap">
             <button onclick="window.playVoice('${sub.id}')"
               title="អត្ថបទត្រូវបានកែប្រែ (សូមចុច Re-Generate Voice ខាងក្រោម)"
-              class="sub-voice-play-btn inline-flex items-center justify-center gap-1.5 px-2.5 py-1 rounded-lg ${
+              class="sub-voice-play-btn shrink-0 inline-flex items-center justify-center w-7 h-7 rounded-lg ${
                 isPlaying
                   ? 'bg-amber-600 text-white shadow-md shadow-amber-500/30 ring-1 ring-amber-400'
                   : 'bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/40 text-amber-400 hover:text-amber-300'
-              } font-medium text-xs transition active:scale-95 cursor-pointer">
+              } transition active:scale-95 cursor-pointer">
               ${isPlaying ? PAUSE_ICON_SVG : PLAY_ICON_SVG}
-              <span class="text-[11px] font-mono font-bold">${isPlaying ? 'Playing' : 'Play'}</span>
             </button>
-            ${
-              sub.speedApplied && sub.speedApplied > 1.04
-                ? `<span class="text-[10px] font-mono px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30 font-bold" title="Auto-Speed: ${sub.speedApplied}x">⚡${sub.speedApplied}x</span>`
-                : `<span class="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-800/90 text-slate-400 border border-slate-700/50" title="ល្បឿនធម្មជាតិ: 1.0x">1.0x</span>`
-            }
+            ${renderSpeedBadge(sub.speedApplied)}
+          </div>
+          `
+          : (sub.khmerText && sub.khmerText.trim())
+          ? `
+          <div class="inline-flex items-center justify-center gap-2 whitespace-nowrap">
+            <button onclick="window.generateSingleVoice('${sub.id}')"
+              title="ចុចដើម្បីបង្កើតសំឡេងឡើងវិញសម្រាប់តែជួរនេះ (Retry row)"
+              class="shrink-0 inline-flex items-center justify-center w-7 h-7 rounded-lg bg-rose-500/15 hover:bg-rose-500/25 border border-rose-500/40 text-rose-300 hover:text-rose-200 transition active:scale-95 cursor-pointer">
+              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+            </button>
+            <span class="shrink-0 text-[10px] font-mono text-rose-400 select-none">Retry</span>
           </div>
           `
           : `
-          <div title="មិនទាន់មានសំឡេង (សូមចុច Generate Voice ខាងក្រោម)"
-            class="inline-flex items-center justify-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-800/40 border border-slate-700/40 text-slate-500 opacity-40 cursor-not-allowed select-none">
-            ${PLAY_ICON_SVG}
-            <span class="text-[11px] font-medium text-slate-500">Pending</span>
+          <div class="inline-flex items-center justify-center gap-2 whitespace-nowrap">
+            <div title="មិនទាន់មានអត្ថបទខ្មែរ"
+              class="inline-flex items-center justify-center w-7 h-7 rounded-lg bg-slate-800/40 border border-slate-700/40 text-slate-500 opacity-40 cursor-not-allowed select-none">
+              ${PLAY_ICON_SVG}
+            </div>
+            <span class="shrink-0 text-[10px] font-mono text-slate-600 select-none">--</span>
           </div>
           `
       }
@@ -323,6 +344,7 @@ export function createSubtitleRowElement(sub, idx) {
 }
 
 export function renderSubtitleTable() {
+  if (typeof document === 'undefined') return;
   const tbody = document.getElementById('subtitle-table-body');
   if (!tbody) return;
 
@@ -413,6 +435,7 @@ export function ensureDelegatedTableListeners(tbody) {
       if (field === 'start') sub.startSec = seconds;
       if (field === 'end') sub.endSec = seconds;
 
+      state.masterAudioUrl = null;
       state.emit('subtitlesChanged', state.subtitles);
     } else if (target.matches('.sub-voice-select')) {
       if (sub.voice !== target.value) {
@@ -518,6 +541,7 @@ export function addNewSubtitleRow() {
   };
 
   state.subtitles.push(newSub);
+  state.masterAudioUrl = null;
   renderSubtitleTable();
   state.emit('subtitlesChanged', state.subtitles);
   window.showToast?.('បានបន្ថែមជួរ Subtitle ថ្មី');
@@ -530,10 +554,59 @@ export function deleteSelectedSubtitles() {
   if (state.subtitles.length === beforeLen) {
     window.showToast?.('សូមជ្រើសរើសជួរ Subtitle ដែលត្រូវលុបជាមុនសិន');
   } else {
+    state.masterAudioUrl = null;
     renderSubtitleTable();
     state.emit('subtitlesChanged', state.subtitles);
     window.showToast?.('បានលុប Subtitle ដែលបានជ្រើសរើស');
   }
+}
+
+/**
+ * Clear Khmer translations while preserving original speech, timestamps, and voice profiles.
+ * Clears selected rows if any are checked, or all rows if none are checked.
+ */
+export function clearKhmerTranslations() {
+  if (!state.subtitles || state.subtitles.length === 0) {
+    window.showToast?.('⚠️ មិនមានទិន្នន័យ Subtitle ក្នុងតារាងទេ');
+    return;
+  }
+
+  // Strip any orphan rows that have no originalText (e.g. from prior mismatched imports)
+  const hasRealSpeech = state.subtitles.some(s => (s.originalText || '').trim().length > 0);
+  if (hasRealSpeech) {
+    state.subtitles = state.subtitles.filter(s => (s.originalText || '').trim().length > 0);
+  }
+
+  const selectedRows = state.subtitles.filter(s => s.selected);
+  const targetRows = selectedRows.length > 0 ? selectedRows : state.subtitles;
+  const count = targetRows.length;
+
+  const confirmMsg = selectedRows.length > 0
+    ? `តើអ្នកពិតជាចង់សម្អាតអត្ថបទបកប្រែខ្មែរចំនួន ${count} ជួរដែលបានជ្រើសរើសមែនទេ? (អត្ថបទដើមនឹងនៅរក្សាទុកដដែល)`
+    : `តើអ្នកពិតជាចង់សម្អាតអត្ថបទបកប្រែខ្មែរទាំងអស់ (${count} ជួរ) មែនទេ? (អត្ថបទដើមនឹងនៅរក្សាទុកដដែល)`;
+
+  if (typeof window !== 'undefined' && typeof window.confirm === 'function') {
+    if (!window.confirm(confirmMsg)) {
+      return;
+    }
+  }
+
+  stopVoicePlayback();
+  targetRows.forEach(s => {
+    s.khmerText = '';
+    s.status = 'Pending';
+    s.audioUrl = null;
+  });
+
+  renderSubtitleTable();
+  state.emit('subtitlesChanged', state.subtitles);
+  window.triggerProjectAutoSave?.();
+
+  window.showToast?.(
+    selectedRows.length > 0
+      ? `🧹 បានសម្អាតអត្ថបទខ្មែរចំនួន ${count} ជួររួចរាល់`
+      : `🧹 បានសម្អាតអត្ថបទខ្មែរទាំងអស់ (${count} ជួរ) រួចរាល់`
+  );
 }
 
 export function selectAllSubtitles(checked) {
@@ -1045,6 +1118,18 @@ export function joinImportedSRT(imported, existing, options = {}) {
   const rowTaken = new Array(rows.length).fill(false);
   const blockToRow = new Array(incoming.length).fill(-1);
 
+  const applyTextToRow = (target, inc) => {
+    if (inc.khmerText) {
+      target.khmerText = inc.khmerText;
+    }
+    if (inc.originalText && (!target.originalText || options.updateOriginal)) {
+      target.originalText = inc.originalText;
+    }
+    if (!inc.khmerText && inc.originalText) {
+      target.originalText = inc.originalText;
+    }
+  };
+
   // --- Pass 1: timecode join (greedy, globally smallest delta first) --------
   const pairs = [];
   incoming.forEach((block, bi) => {
@@ -1065,7 +1150,7 @@ export function joinImportedSRT(imported, existing, options = {}) {
     blockTaken[pair.bi] = true;
     rowTaken[pair.ri] = true;
     blockToRow[pair.bi] = pair.ri;
-    rows[pair.ri].khmerText = incoming[pair.bi].khmerText;
+    applyTextToRow(rows[pair.ri], incoming[pair.bi]);
     byTimecode++;
   }
 
@@ -1119,24 +1204,26 @@ export function joinImportedSRT(imported, existing, options = {}) {
       blockTaken[bi] = true;
       rowTaken[expected] = true;
       blockToRow[bi] = expected;
-      rows[expected].khmerText = block.khmerText;
+      applyTextToRow(rows[expected], block);
       byInterpolation++;
     });
   }
 
   // --- Pass 3: positional fallback -----------------------------------------
-  // Only when neither of the above matched ANYTHING. The file is then from a
-  // different timing base and the only remaining signal is the block number,
-  // which requires an equal row count to be meaningful.
+  // When row counts match 1:1:
+  // If timecode matching and interpolation left any blocks unplaced (due to
+  // duplicate timecodes, timing drift, or gaps in the file), rescue the import
+  // by mapping each incoming block 1:1 to its corresponding row index.
   let byPosition = 0;
-  if (byTimecode === 0 && byInterpolation === 0 && incoming.length === rows.length) {
-    incoming.forEach((block, bi) => {
-      if (blockTaken[bi] || rowTaken[bi]) return;
-      blockTaken[bi] = true;
-      rowTaken[bi] = true;
-      rows[bi].khmerText = block.khmerText;
-      byPosition++;
-    });
+  if (incoming.length === rows.length && blockTaken.some(taken => !taken)) {
+    for (let i = 0; i < rows.length; i++) {
+      applyTextToRow(rows[i], incoming[i]);
+      blockTaken[i] = true;
+      rowTaken[i] = true;
+    }
+    byPosition = rows.length;
+    byTimecode = 0;
+    byInterpolation = 0;
   }
 
   // --- Pass 4: append whatever is still unmatched ---------------------------
@@ -1172,6 +1259,31 @@ export function importSRTContent(content) {
     return;
   }
 
+  // Smart Language Detection:
+  // Detect if incoming file is original speech in a foreign language (e.g. Chinese/English without Khmer)
+  const containsKhmerScript = parsed.some(b => /[\u1780-\u17FF\u19E0-\u19FF]/.test(b.khmerText || ''));
+  const containsChineseScript = parsed.some(b => /[\u4E00-\u9FFF\u3400-\u4DBF]/.test(b.khmerText || ''));
+
+  let sourceLanguageDetected = false;
+  if (!containsKhmerScript) {
+    sourceLanguageDetected = true;
+    parsed.forEach(p => {
+      p.originalText = p.khmerText;
+      p.khmerText = '';
+    });
+    if (containsChineseScript && typeof state !== 'undefined') {
+      state.sourceLanguage = 'zh';
+    }
+  }
+
+  // Strip out any empty orphan rows (generated by previous broken imports with no original speech)
+  if (state.subtitles && state.subtitles.length > 0) {
+    const hasAnyRealSpeech = state.subtitles.some(s => (s.originalText || '').trim().length > 0);
+    if (hasAnyRealSpeech) {
+      state.subtitles = state.subtitles.filter(s => (s.originalText || '').trim().length > 0);
+    }
+  }
+
   const { rows, matched, byTimecode, byInterpolation, byPosition, appended } =
     joinImportedSRT(parsed, state.subtitles);
 
@@ -1179,12 +1291,27 @@ export function importSRTContent(content) {
   renderSubtitleTable();
   state.emit('subtitlesChanged', state.subtitles);
 
-  if (appended === 0) {
+  if (sourceLanguageDetected) {
+    const langLabel = containsChineseScript ? 'ភាសាចិន' : 'ភាសាដើម';
+    window.showToast?.(
+      `✅ បាននាំចូលអត្ថបទដើម (${langLabel}) ចំនួន ${parsed.length} ជួរ · រួចរាល់សម្រាប់ចុច Translate`
+    );
+  } else if (byPosition > 0) {
+    window.showToast?.(
+      `✅ ផ្គូផ្គងតាមលំដាប់ជួរ ១-ទល់-១ ជោគជ័យ ${matched}/${parsed.length} ជួរ (Auto-Corrected Timestamps)!`
+    );
+  } else if (appended === 0) {
     const notes = [];
     if (byInterpolation) notes.push(`${byInterpolation} តាម ID`);
     if (byPosition) notes.push(`${byPosition} តាមលំដាប់`);
     const suffix = notes.length ? ` (ក្នុងនោះ ${notes.join(' · ')})` : '';
-    window.showToast?.(`✅ ផ្គូផ្គងបាន ${matched}/${parsed.length} ជួរ${suffix}`);
+
+    const missingKhmerCount = rows.filter(r => (r.originalText || '').trim() && !(r.khmerText || '').trim()).length;
+    if (missingKhmerCount > 0) {
+      window.showToast?.(`⚠️ ផ្គូផ្គងបាន ${matched}/${parsed.length} ជួរ${suffix} · មាន ${missingKhmerCount} ជួរខ្វះអត្ថបទបកប្រែ!`);
+    } else {
+      window.showToast?.(`✅ ផ្គូផ្គងបាន ${matched}/${parsed.length} ជួរ${suffix}`);
+    }
   } else {
     window.showToast?.(
       `✅ ផ្គូផ្គង ${matched} ជួរ (Timecode ${byTimecode}${byInterpolation ? ` · ID ${byInterpolation}` : ''}) · បន្ថែមជួរថ្មី ${appended} ជួរ`
@@ -1316,5 +1443,6 @@ if (typeof window !== 'undefined') {
   window.exportSRTFile = exportSRTFile;
   window.importSRTContent = importSRTContent;
   window.triggerSRTUpload = triggerSRTUpload;
+  window.clearKhmerTranslations = clearKhmerTranslations;
 }
 

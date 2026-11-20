@@ -59,6 +59,10 @@ assert(exportBtnMatch && exportBtnMatch[1].includes('h-8'), 'Export Video CTA bu
 const historyBtnMatch = html.match(/<button id="btn-data-history"[^>]*class="([^"]*)"/);
 assert(historyBtnMatch && historyBtnMatch[1].includes('h-8'), 'Data History button has height class "h-8" (32px)');
 
+// 10. System Updates button
+const updatesBtnMatch = html.match(/<button id="btn-system-updates"[^>]*class="([^"]*)"/);
+assert(updatesBtnMatch && updatesBtnMatch[1].includes('h-8'), 'System Updates button has height class "h-8" (32px)');
+
 console.log('\n================================================================');
 console.log(`📊 RESULT: ${passedChecks}/${totalChecks} Checks Passed (${Math.round((passedChecks / totalChecks) * 100)}%)`);
 console.log('================================================================\n');

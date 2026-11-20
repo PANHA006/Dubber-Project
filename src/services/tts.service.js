@@ -4,12 +4,13 @@ const fs = require('fs');
 const config = require('../config');
 const rvcService = require('./rvc.service');
 const { formatTerminalLog, formatTerminalProgress } = require('../utils/terminal-logger');
+const { parseTimeToSeconds } = require('../utils/time');
 
 class TTSService {
   constructor() {
-    this.workerPath = path.join(__dirname, '../workers/tts_worker.py');
-    this.storageDir = path.join(__dirname, '../../storage/voices');
-    this.tempDir = path.join(__dirname, '../../storage/temp');
+    this.workerPath = path.join(__dirname, '../workers/tts_worker.py').replace('app.asar', 'app.asar.unpacked');
+    this.storageDir = path.join(config.storageDir, 'voices');
+    this.tempDir = path.join(config.storageDir, 'temp');
     this.ensureStorageDir();
     this.cleanupStaleTempPayloads();
   }
@@ -81,7 +82,7 @@ class TTSService {
 
     const pythonExe = this.getPythonPath();
     const payload = {
-      items: items.map(item => {
+      items: items.map((item, idx) => {
         // If oldAudioUrl or oldFilename is provided and exists in storageDir, clean it up if different
         const oldAudio = item.oldAudioUrl || item.oldFilename;
         if (oldAudio) {
@@ -96,12 +97,25 @@ class TTSService {
           }
         }
 
+        const s = parseTimeToSeconds(item.startSec ?? item.start);
+        const e = parseTimeToSeconds(item.endSec ?? item.end);
         let targetDuration = item.targetDuration;
-        if (targetDuration === undefined && item.startSec !== undefined && item.endSec !== undefined) {
-          const s = parseFloat(item.startSec);
-          const e = parseFloat(item.endSec);
+        if (targetDuration === undefined || targetDuration === null) {
           if (e > s) {
             targetDuration = Math.round((e - s) * 100) / 100;
+          }
+        }
+
+        // Smart Collision Look-Ahead: if the next item starts sooner than this item's end window,
+        // tighten targetDuration so TTS automatically speeds up to fit before the next voice begins
+        const nextItem = items[idx + 1];
+        if (nextItem) {
+          const nextS = parseTimeToSeconds(nextItem.startSec ?? nextItem.start);
+          if (nextS > s) {
+            const gapToNext = Math.round((nextS - s - 0.05) * 100) / 100;
+            if (gapToNext > 0.3 && (targetDuration === null || gapToNext < targetDuration)) {
+              targetDuration = gapToNext;
+            }
           }
         }
 
@@ -151,18 +165,32 @@ class TTSService {
 
     return new Promise((resolve, reject) => {
       const proc = spawn(pythonExe, ['-u', this.workerPath, tempFile], {
-        env: { ...process.env, PYTHONIOENCODING: 'utf-8' }
+        env: { ...process.env, PYTHONIOENCODING: 'utf-8' },
+        windowsHide: true
       });
 
       let stdout = '';
       let stderr = '';
       let stderrBuffer = '';
 
+      // Inactivity watchdog: if no progress/output is received for 35s, force close so pipeline auto-heals
+      let activityTimer = null;
+      const resetActivityTimer = () => {
+        if (activityTimer) clearTimeout(activityTimer);
+        activityTimer = setTimeout(() => {
+          formatTerminalLog('TTS:WARN', 'TTS Worker inactivity watchdog triggered (35s no progress). Terminating stuck worker to enable auto-retry...');
+          try { proc.kill('SIGTERM'); } catch (_) {}
+        }, 35000);
+      };
+      resetActivityTimer();
+
       proc.stdout.on('data', (chunk) => {
+        resetActivityTimer();
         stdout += chunk.toString('utf-8');
       });
 
       proc.stderr.on('data', (chunk) => {
+        resetActivityTimer();
         const text = chunk.toString('utf-8');
         stderrBuffer += text;
         const lines = stderrBuffer.split('\n');
@@ -190,6 +218,10 @@ class TTSService {
       });
 
       proc.on('close', async (code) => {
+        if (activityTimer) {
+          clearTimeout(activityTimer);
+          activityTimer = null;
+        }
         // Clean up temp file safely
         try {
           if (fs.existsSync(tempFile)) fs.unlinkSync(tempFile);

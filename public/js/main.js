@@ -8,6 +8,7 @@ import {
   deleteSelectedSubtitles,
   selectAllSubtitles,
   setAllVoices,
+  clearKhmerTranslations,
   exportSRTFile,
   importSRTContent,
   triggerSRTUpload,
@@ -26,6 +27,7 @@ import {
 import {
   initVideoPlayer,
   seekTo,
+  seekRelative,
   togglePlay,
   stopPlayback,
   toggleMuteAudio,
@@ -41,10 +43,12 @@ import {
 import { extractAudioChunksFromVideo, extractAudioFromVideo } from './audio-extractor.js';
 import { parseTimecodeSRT, formatTimecodeSRT } from './subtitles.js';
 import { logToTerminal } from './logger.js';
+import './system-updates.js';
 
 // Expose globally for HTML event attributes
 window.state = state;
 window.seekTo = seekTo;
+window.seekRelative = seekRelative;
 window.togglePlay = togglePlay;
 window.stopPlayback = stopPlayback;
 window.toggleMuteAudio = toggleMuteAudio;
@@ -53,6 +57,7 @@ window.addNewSubtitleRow = addNewSubtitleRow;
 window.deleteSelectedSubtitles = deleteSelectedSubtitles;
 window.selectAllSubtitles = selectAllSubtitles;
 window.setAllVoices = setAllVoices;
+window.clearKhmerTranslations = clearKhmerTranslations;
 window.exportSRTFile = exportSRTFile;
 window.exportJSONFile = exportJSONFile;
 window.importJSONContent = importJSONContent;
@@ -123,6 +128,10 @@ window.startTranscription = async function() {
 
     const activeModel = state.sttModel || 'groq-whisper-large-v3';
     const isGroq = activeModel.startsWith('groq');
+    const modelBadge = document.getElementById('transcribe-model-badge');
+    if (modelBadge) {
+      modelBadge.textContent = isGroq ? 'Groq Whisper' : 'Faster-Whisper';
+    }
 
     if (isGroq && !state.groqApiKey && !state.serverHasGroqKey) {
       window.showToast?.('⚠️ សូមបញ្ចូល Groq API Key នៅក្នុង Settings ឬក្នុង .env ជាមុនសិន ឬជ្រើសរើស Faster-Whisper (Offline)');
@@ -137,20 +146,42 @@ window.startTranscription = async function() {
       return;
     }
 
-    // 1. Client-side Single-Pass Audio Extraction (16kHz Mono WAV)
-    logToTerminal('CLIENT:STATE', `User clicked [Transcript] button (Model: ${activeModel})`, {
-      video: state.currentVideoFile?.name,
-      size: `${(state.currentVideoFile?.size / (1024 * 1024)).toFixed(2)} MB`,
-      model: activeModel
-    });
-    updateProgress('🎙️ កំពុងទាញយកសំឡេងពីវីដេអូ (Web Audio API 16kHz Mono)...');
-    const audioBlob = await extractAudioFromVideo(state.currentVideoFile, (progressMsg) => {
-      updateProgress(progressMsg);
-    });
-
     // Reset subtitle table at start of fresh transcription
     state.subtitles = [];
     renderSubtitleTable();
+
+    // Check if video is currently uploading to server; wait briefly to leverage Server-Side FFmpeg CFR sync
+    if (!state.videoUrl && state.isUploadingVideo) {
+      updateProgress('⏳ កំពុងរង់ចាំវីដេអូ Upload ទៅ Server រួចរាល់ ដើម្បីប្រើ FFmpeg CFR Sync...');
+      let waitCounter = 0;
+      while (!state.videoUrl && state.isUploadingVideo && waitCounter < 20) {
+        await new Promise(r => setTimeout(r, 500));
+        waitCounter++;
+      }
+    }
+
+    let useServerCfr = false;
+    let audioBlob = null;
+
+    if (state.videoUrl) {
+      useServerCfr = true;
+      logToTerminal('AUDIO:CFR', `⚡ Using Server-Side FFmpeg CFR Audio Extraction for 100% Video Sync`, {
+        videoUrl: state.videoUrl,
+        model: activeModel
+      });
+      updateProgress('⚡ កំពុងទាញយកសំឡេងលើ Server តាមរយៈ FFmpeg CFR (100% Video Sync)...');
+    } else {
+      // Fallback: client-side single-pass audio extraction
+      logToTerminal('CLIENT:STATE', `User clicked [Transcript] button (Model: ${activeModel})`, {
+        video: state.currentVideoFile?.name,
+        size: `${(state.currentVideoFile?.size / (1024 * 1024)).toFixed(2)} MB`,
+        model: activeModel
+      });
+      updateProgress('🎙️ កំពុងទាញយកសំឡេងពីវីដេអូ (Web Audio API 16kHz Mono)...');
+      audioBlob = await extractAudioFromVideo(state.currentVideoFile, (progressMsg) => {
+        updateProgress(progressMsg);
+      });
+    }
 
     // 2. Single-pass upload to backend /api/transcribe
     // Read live slider values directly from the DOM UI to guarantee 100% agreement with what the user sees
@@ -184,13 +215,21 @@ window.startTranscription = async function() {
       vadFilter: vadStr
     });
 
-    logToTerminal('CLIENT:UPLOAD', `Uploading full audio (${(audioBlob.size / (1024 * 1024)).toFixed(2)} MB) to backend /api/transcribe (Model: ${activeModel})...`);
+    if (useServerCfr) {
+      logToTerminal('CLIENT:REQUEST', `Transcribing via Server FFmpeg CFR Sync for "${state.videoUrl}" (Model: ${activeModel})...`);
+    } else if (audioBlob) {
+      logToTerminal('CLIENT:UPLOAD', `Uploading full audio (${(audioBlob.size / (1024 * 1024)).toFixed(2)} MB) to backend /api/transcribe (Model: ${activeModel})...`);
+    }
     updateProgress(isGroq 
       ? `⚡ Groq Cloud Whisper កំពុងបំប្លែងសំឡេង (Ultra-fast Cloud)...` 
       : `🚀 Faster-Whisper [${activeModel}] កំពុងបំប្លែងសំឡេង (Local CPU $0)...`);
 
     const formData = new FormData();
-    formData.append('audio', audioBlob, 'extracted_audio.wav');
+    if (useServerCfr) {
+      formData.append('videoUrl', state.videoUrl);
+    } else if (audioBlob) {
+      formData.append('audio', audioBlob, 'extracted_audio.wav');
+    }
     formData.append('model', activeModel);
     if (state.groqApiKey) {
       formData.append('groqApiKey', state.groqApiKey);
@@ -202,6 +241,9 @@ window.startTranscription = async function() {
     formData.append('maxMergeLimit', String(liveMaxMerge));
     formData.append('maxPauseGap', String(liveMergeGap));
     formData.append('vadThreshold', String(liveVad));
+    const rawLang = String(state.sourceLanguage || 'zh').toLowerCase();
+    const reqLang = rawLang.includes('chin') || rawLang.includes('zh') ? 'zh' : (rawLang.includes('en') ? 'en' : (rawLang.includes('km') ? 'km' : (rawLang.length === 2 ? rawLang : 'zh')));
+    formData.append('language', reqLang);
 
     const response = await fetch('/api/transcribe', {
       method: 'POST',
@@ -218,7 +260,8 @@ window.startTranscription = async function() {
     const segments = result.data;
     // Source language detected by the STT engine. `zh` unlocks the direct
     // Chinese -> Khmer path on the next Translate click (1 quota, no EN line).
-    state.sourceLanguage = result.language || null;
+    const rawResultLang = String(result.language || '').toLowerCase();
+    state.sourceLanguage = rawResultLang.includes('chin') || rawResultLang.includes('zh') ? 'zh' : (rawResultLang.includes('en') ? 'en' : (rawResultLang.includes('km') ? 'km' : (rawResultLang.length === 2 ? rawResultLang : 'zh')));
     if (state.sourceLanguage) {
       logToTerminal('CLIENT:LANG', `Detected source language: ${state.sourceLanguage}`);
     }
@@ -318,6 +361,9 @@ export async function startTranslation() {
 
   const btn = document.getElementById('btn-translate');
   const btnText = document.getElementById('translate-btn-text');
+  const banner = document.getElementById('translate-progress-banner');
+  const statusText = document.getElementById('translate-status-text');
+  const pipelineBadge = document.getElementById('translate-pipeline-badge');
 
   try {
     state.isTranslating = true;
@@ -334,6 +380,13 @@ export async function startTranslation() {
       : 'Translating (2 Steps)...';
 
     if (btnText) btnText.textContent = pipelineLabel;
+    if (banner) banner.classList.remove('hidden');
+    if (pipelineBadge) pipelineBadge.textContent = isChineseSource ? 'Direct ZH ➡️ KM' : '2-Step (EN ➡️ KM)';
+    if (statusText) {
+      statusText.textContent = isChineseSource
+        ? `កំពុងបកប្រែផ្ទាល់ពីចិន ➡️ ខ្មែរ (${state.subtitles.length} ជួរ)...`
+        : `កំពុងដំណើរការបកប្រែ ២ ជំហាន (${state.subtitles.length} ជួរ)...`;
+    }
     if (isChineseSource) {
       window.showToast('🤖 កំពុងបកប្រែផ្ទាល់ពីចិន ➡️ ខ្មែរ (១ Quota): មិនបង្ហាញបន្ទាត់អង់គ្លេស...');
       logToTerminal('CLIENT:TRANSLATE', `Direct Chinese -> Khmer pipeline (1 Quota) for ${state.subtitles.length} subtitles...`);
@@ -399,6 +452,7 @@ export async function startTranslation() {
       btn.classList.remove('opacity-70', 'cursor-wait');
     }
     if (btnText) btnText.textContent = 'Translate';
+    if (banner) banner.classList.add('hidden');
   }
 }
 
@@ -535,6 +589,10 @@ async function executeVoiceGeneration(itemsToProcess, mode = 'all') {
   const speedBadge = document.getElementById('tts-speed-badge');
   const statusText = document.getElementById('tts-status-text');
 
+  const MAX_AUTO_RETRIES = 5; // Up to 5 auto-retries for any failed lines
+  let currentBatch = [...itemsToProcess];
+  let attempt = 0;
+
   try {
     state.isGeneratingVoice = true;
 
@@ -546,133 +604,209 @@ async function executeVoiceGeneration(itemsToProcess, mode = 'all') {
       }
     });
 
-    if (mode === 'selected' && btnRegenText) btnRegenText.textContent = 'Re-Generating...';
-    else if (mode === 'failed' && btnRetryText) btnRetryText.textContent = 'Retrying...';
-    else if (btnGenText) btnGenText.textContent = 'Generating...';
-
-    // Show and reset progress banner
     if (banner) {
       banner.classList.remove('hidden');
-      if (progressBar) progressBar.style.width = '0%';
-      if (countBadge) countBadge.textContent = `0 / ${itemsToProcess.length} (0%)`;
-      if (speedBadge) speedBadge.textContent = 'Speed: 1.0x';
-      if (statusText) statusText.textContent = `កំពុងដំណើរការបង្កើតសំឡេង (0/${itemsToProcess.length})...`;
     }
 
-    const logPrefix = mode === 'selected' ? 'CLIENT:TTS_REGEN' : mode === 'failed' ? 'CLIENT:TTS_RETRY' : 'CLIENT:TTS';
-    logToTerminal(logPrefix, `Starting voice generation for ${itemsToProcess.length} items (Streaming mode)...`);
+    while (currentBatch.length > 0 && attempt <= MAX_AUTO_RETRIES) {
+      attempt++;
+      const isRetryRound = attempt > 1;
 
-    const payload = {
-      items: itemsToProcess.map(getFreshSubtitlePayloadItem),
-      stream: true
-    };
+      if (isRetryRound) {
+        const roundNum = attempt - 1;
+        if (mode === 'selected' && btnRegenText) btnRegenText.textContent = `Auto-Retrying (${currentBatch.length})...`;
+        else if (mode === 'failed' && btnRetryText) btnRetryText.textContent = `Auto-Retrying (${currentBatch.length})...`;
+        else if (btnGenText) btnGenText.textContent = `Auto-Retrying (${currentBatch.length})...`;
 
-    const response = await fetch('/api/generate-voice?stream=true', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Accept': 'text/event-stream'
-      },
-      body: JSON.stringify(payload)
-    });
+        logToTerminal('CLIENT:TTS_AUTO_RETRY', `[Auto-Retry ${roundNum}/${MAX_AUTO_RETRIES}] Generating ${currentBatch.length} remaining/failed items...`);
+        if (statusText) statusText.textContent = `🔄 Auto-Retry (ជុំទី ${roundNum}/${MAX_AUTO_RETRIES})៖ នៅសល់ ${currentBatch.length} ជួរ...`;
+        window.showToast?.(`🔄 នៅសល់ ${currentBatch.length} ជួរ កំពុងបង្កើតឡើងវិញដោយស្វ័យប្រវត្តិ (ជុំទី ${roundNum}/${MAX_AUTO_RETRIES})...`);
 
-    if (!response.ok) {
-      const errJson = await response.json().catch(() => ({}));
-      throw new Error(errJson.message || `HTTP error ${response.status}`);
-    }
+        // Brief delay (1.2s) to allow Edge-TTS sockets and server buffers to cool down
+        await new Promise(r => setTimeout(r, 1200));
+      } else {
+        if (mode === 'selected' && btnRegenText) btnRegenText.textContent = 'Re-Generating...';
+        else if (mode === 'failed' && btnRetryText) btnRetryText.textContent = 'Retrying...';
+        else if (btnGenText) btnGenText.textContent = 'Generating...';
 
-    let voiceResults = [];
+        if (progressBar) progressBar.style.width = '0%';
+        if (countBadge) countBadge.textContent = `0 / ${currentBatch.length} (0%)`;
+        if (speedBadge) speedBadge.textContent = 'Speed: 1.0x';
+        if (statusText) statusText.textContent = `កំពុងដំណើរការបង្កើតសំឡេង (0/${currentBatch.length})...`;
 
-    // Stream reader for real-time progress events
-    if (response.body && typeof response.body.getReader === 'function') {
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder('utf-8');
-      let buffer = '';
+        const logPrefix = mode === 'selected' ? 'CLIENT:TTS_REGEN' : mode === 'failed' ? 'CLIENT:TTS_RETRY' : 'CLIENT:TTS';
+        logToTerminal(logPrefix, `Starting voice generation for ${currentBatch.length} items (Streaming mode)...`);
+      }
 
-      while (true) {
-        const { value, done } = await reader.read();
-        if (done) break;
+      const payload = {
+        items: currentBatch.map(getFreshSubtitlePayloadItem),
+        stream: true
+      };
 
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n');
-        buffer = lines.pop(); // keep partial
+      const response = await fetch('/api/generate-voice?stream=true', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'text/event-stream'
+        },
+        body: JSON.stringify(payload)
+      });
 
-        for (const line of lines) {
-          const trimmed = line.trim();
-          if (!trimmed.startsWith('data:')) continue;
-          const dataStr = trimmed.slice(5).trim();
-          if (!dataStr) continue;
+      if (!response.ok) {
+        const errJson = await response.json().catch(() => ({}));
+        throw new Error(errJson.message || `HTTP error ${response.status}`);
+      }
 
-          try {
-            const event = JSON.parse(dataStr);
-            if (event.type === 'progress') {
-              const current = event.current || 0;
-              const total = event.total || itemsToProcess.length;
-              const pct = total > 0 ? Math.round((current / total) * 100) : 0;
+      let voiceResults = [];
 
-              if (progressBar) progressBar.style.width = `${pct}%`;
-              if (countBadge) countBadge.textContent = `${current} / ${total} (${pct}%)`;
-              if (speedBadge) speedBadge.textContent = `Speed: ${event.speed || 1.0}x`;
-              if (statusText) {
-                const statusLabel = event.status === 'OK' ? 'ជោគជ័យ' : 'បរាជ័យ';
-                const vName = String(event.voice || '').replace('km-KH-', '').replace('Neural', '');
-                statusText.textContent = `កំពុងដំណើរការ (${current}/${total}) - [${vName || 'Edge TTS'}] ${statusLabel}`;
+      // Stream reader for real-time progress events
+      if (response.body && typeof response.body.getReader === 'function') {
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder('utf-8');
+        let buffer = '';
+
+        while (true) {
+          const { value, done } = await reader.read();
+          if (done) break;
+
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n');
+          buffer = lines.pop(); // keep partial
+
+          for (const line of lines) {
+            const trimmed = line.trim();
+            if (!trimmed.startsWith('data:')) continue;
+            const dataStr = trimmed.slice(5).trim();
+            if (!dataStr) continue;
+
+            try {
+              const event = JSON.parse(dataStr);
+              if (event.type === 'progress') {
+                const current = event.current || 0;
+                const total = event.total || currentBatch.length;
+                const pct = total > 0 ? Math.round((current / total) * 100) : 0;
+
+                if (progressBar) progressBar.style.width = `${pct}%`;
+                if (countBadge) countBadge.textContent = `${current} / ${total} (${pct}%)`;
+                if (speedBadge) speedBadge.textContent = `Speed: ${event.speed || 1.0}x`;
+                if (statusText) {
+                  const statusLabel = event.status === 'OK' ? 'ជោគជ័យ' : 'បរាជ័យ';
+                  const vName = String(event.voice || '').replace('km-KH-', '').replace('Neural', '');
+                  const prefix = isRetryRound ? `🔄 Auto-Retry [ជុំទី ${attempt - 1}]` : 'កំពុងដំណើរការ';
+                  statusText.textContent = `${prefix} (${current}/${total}) - [${vName || 'Edge TTS'}] ${statusLabel}`;
+                }
+              } else if (event.type === 'done') {
+                voiceResults = event.data || [];
+              } else if (event.type === 'error') {
+                throw new Error(event.message || 'Generation stream error');
               }
-            } else if (event.type === 'done') {
-              voiceResults = event.data || [];
-            } else if (event.type === 'error') {
-              throw new Error(event.message || 'Generation stream error');
+            } catch (pe) {
+              if (pe.message && !pe.message.includes('JSON')) throw pe;
             }
-          } catch (pe) {
-            if (pe.message && !pe.message.includes('JSON')) throw pe;
           }
         }
+      } else {
+        const result = await response.json();
+        if (!result.success) throw new Error(result.message || 'Generation failed');
+        voiceResults = result.data || [];
       }
-    } else {
-      const result = await response.json();
-      if (!result.success) throw new Error(result.message || 'Generation failed');
-      voiceResults = result.data || [];
+
+      const voiceMap = {};
+      voiceResults.forEach(r => {
+        voiceMap[r.id] = r;
+      });
+
+      state.subtitles.forEach(sub => {
+        const vRes = voiceMap[sub.id];
+        if (vRes) {
+          if (vRes.success) {
+            sub.status = 'Ready';
+            sub.needsRegenerate = false;
+            if (mode === 'selected') sub.selected = false;
+            delete sub.oldAudioUrl;
+            sub.audioUrl = vRes.audioUrl;
+            sub.audioDuration = vRes.duration;
+            sub.targetDuration = vRes.targetDuration || null;
+            sub.speedApplied = vRes.speedApplied || 1.0;
+          } else {
+            sub.status = 'Failed';
+          }
+        }
+      });
+
+      renderSubtitleTable();
+      state.emit('subtitlesChanged', state.subtitles);
+      updateRetryFailedButtonVisibility();
+
+      // Check which items from itemsToProcess still need audio:
+      const remainingUnfinished = itemsToProcess.filter(item => {
+        const sub = state.subtitles.find(s => s.id === item.id);
+        return sub && (sub.khmerText || '').trim().length > 0 && (!sub.audioUrl || sub.status !== 'Ready');
+      });
+
+      if (remainingUnfinished.length === 0) {
+        // Every single row has been successfully generated!
+        if (statusText) statusText.textContent = `✅ បង្កើតសំឡេងជោគជ័យគ្រប់ ${itemsToProcess.length} ជួរ (១០០%)!`;
+        break;
+      }
+
+      // Explicitly update banner to show that it is checking and preparing the auto-retry round
+      if (statusText) {
+        statusText.textContent = `🔍 កំពុងត្រួតពិនិត្យជួរដែលមិនទាន់ជោគជ័យ... រកឃើញ ${remainingUnfinished.length} ជួរ`;
+      }
+      logToTerminal('CLIENT:TTS_CHECK', `Pass ${attempt} completed: ${remainingUnfinished.length} rows need retry. Starting auto-retry round ${attempt}...`);
+      await new Promise(r => setTimeout(r, 800));
+
+      // Next attempt will target only the remaining unfinished rows
+      currentBatch = remainingUnfinished;
     }
 
-    const voiceMap = {};
-    voiceResults.forEach(r => {
-      voiceMap[r.id] = r;
-    });
+    // Evaluate final overall results:
+    const finalReadyCount = itemsToProcess.filter(item => {
+      const sub = state.subtitles.find(s => s.id === item.id);
+      return sub && sub.audioUrl && sub.status === 'Ready';
+    }).length;
 
-    let updatedCount = 0;
-    state.subtitles.forEach(sub => {
-      const vRes = voiceMap[sub.id];
-      if (vRes) {
-        if (vRes.success) {
-          sub.status = 'Ready';
-          sub.needsRegenerate = false;
-          if (mode === 'selected') sub.selected = false;
-          delete sub.oldAudioUrl;
-          sub.audioUrl = vRes.audioUrl;
-          sub.audioDuration = vRes.duration;
-          sub.targetDuration = vRes.targetDuration || null;
-          sub.speedApplied = vRes.speedApplied || 1.0;
-          updatedCount++;
-        } else {
-          sub.status = 'Failed';
-        }
-      }
-    });
-
-    renderSubtitleTable();
-    state.emit('subtitlesChanged', state.subtitles);
-    updateRetryFailedButtonVisibility();
-
-    if (updatedCount === 0 && itemsToProcess.length > 0) {
-      logToTerminal('CLIENT:TTS_FAIL', `Failed to generate any voice files out of ${itemsToProcess.length} items`);
+    if (finalReadyCount === itemsToProcess.length) {
+      logToTerminal('CLIENT:TTS_OK', `Successfully generated all ${finalReadyCount} Khmer voice files!`);
+      window.showToast(`🎉 បានបង្កើតសំឡេង AI ជោគជ័យគ្រប់ទាំង ${finalReadyCount}/${itemsToProcess.length} ជួរ (១០០%)! អាចចុចស្តាប់បានហើយ`);
+    } else if (finalReadyCount === 0) {
+      logToTerminal('CLIENT:TTS_FAIL', `Failed to generate any voice files out of ${itemsToProcess.length} items after retries`);
       window.showToast(`❌ បរាជ័យក្នុងការបង្កើតសំឡេង! សូមពិនិត្យការតភ្ជាប់អ៊ីនធឺណិត ឬសាកល្បងម្ដងទៀត`);
-    } else if (updatedCount < itemsToProcess.length) {
-      const failCount = itemsToProcess.length - updatedCount;
-      logToTerminal('CLIENT:TTS_PARTIAL', `Generated ${updatedCount} voices, ${failCount} items failed`);
-      window.showToast(`⚠️ បានបង្កើតសំឡេងចំនួន ${updatedCount}/${itemsToProcess.length} ជួរ (${failCount} ជួរត្រូវបរាជ័យ)`);
     } else {
-      logToTerminal('CLIENT:TTS_OK', `Successfully generated ${updatedCount} Khmer voice files in storage/voices/`);
-      window.showToast(`🎉 បានបង្កើតសំឡេង AI ជោគជ័យគ្រប់ទាំង ${updatedCount} ជួរ! អាចចុចស្តាប់បានហើយ`);
+      const failCount = itemsToProcess.length - finalReadyCount;
+      logToTerminal('CLIENT:TTS_PARTIAL', `Generated ${finalReadyCount} voices, ${failCount} items still need retry`);
+      window.showToast(`⚠️ បានបង្កើតសំឡេងចំនួន ${finalReadyCount}/${itemsToProcess.length} ជួរ (នៅសល់ ${failCount} ជួរមិនទាន់បាន)`);
+    }
+
+    // Auto-Assemble Full Timeline Master Voice Audio Track (Equal to Video Duration)
+    if (finalReadyCount > 0) {
+      try {
+        if (statusText) statusText.textContent = '⚡ កំពុងផ្គុំសំឡេងមេ (Master Timeline Audio) ស្មើនឹងវីដេអូដើម...';
+        logToTerminal('CLIENT:MASTER_TIMELINE_BUILD', `Auto-assembling Master Timeline Voice Audio for ${state.subtitles.length} subtitles...`);
+        const assembleRes = await fetch('/api/voice/assemble-master', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            videoUrl: state.videoUrl,
+            subtitles: state.subtitles,
+            videoDuration: state.duration,
+            dubVolume: state.dubVolume || 1.0
+          })
+        });
+        const assembleData = await assembleRes.json();
+        if (assembleRes.ok && assembleData.success && assembleData.data?.masterAudioUrl) {
+          state.masterAudioUrl = assembleData.data.masterAudioUrl;
+          logToTerminal('CLIENT:MASTER_TIMELINE_READY', `Master Timeline Audio Ready: ${state.masterAudioUrl} (${assembleData.data.sizeMb} MB, ${assembleData.data.duration}s)`);
+          window.showToast?.(`🎉 សំឡេងមេ (Master Timeline Audio) ត្រូវបានផ្គុំរួចរាល់ស្មើប្រវែងវីដេអូដើម!`);
+          if (window.loadMasterAudioTrack) {
+            window.loadMasterAudioTrack(state.masterAudioUrl);
+          }
+          window.triggerProjectAutoSave?.();
+        }
+      } catch (masterErr) {
+        console.warn('Auto-assembly of master voice failed (non-blocking fallback):', masterErr);
+      }
     }
 
   } catch (err) {
@@ -747,6 +881,19 @@ window.retryFailedVoices = async function() {
   await executeVoiceGeneration(failedItems, 'failed');
 };
 
+window.generateSingleVoice = async function(subId) {
+  if (state.isGeneratingVoice) return;
+  if (!state.subtitles || state.subtitles.length === 0) return;
+  const sub = state.subtitles.find(s => s.id === subId);
+  if (!sub || !(sub.khmerText || '').trim()) {
+    window.showToast?.('⚠️ មិនមានអត្ថបទខ្មែរសម្រាប់ជួរនេះទេ!');
+    return;
+  }
+  const idx = state.subtitles.indexOf(sub) + 1;
+  window.showToast?.(`🔄 កំពុងបង្កើតសំឡេងឡើងវិញសម្រាប់ជួរ #${idx}...`);
+  await executeVoiceGeneration([sub], 'selected');
+};
+
 window.generateAllAudio = window.generateAllVoice;
 
 /**
@@ -791,6 +938,8 @@ window.generateDubbedVideo = async function() {
 
   const btn = document.getElementById('btn-generate-video');
   const btnText = document.getElementById('generate-video-text');
+  const banner = document.getElementById('video-render-progress-banner');
+  const statusText = document.getElementById('video-render-status-text');
 
   try {
     state.isGeneratingVideo = true;
@@ -799,6 +948,8 @@ window.generateDubbedVideo = async function() {
       btn.classList.add('opacity-70', 'cursor-wait');
     }
     if (btnText) btnText.textContent = 'Rendering...';
+    if (banner) banner.classList.remove('hidden');
+    if (statusText) statusText.textContent = `កំពុងវិភាគ Settings & Render វីដេអូ Dubbed (${readyItems.length} វគ្គ)...`;
 
     window.showToast?.('🚀 កំពុងវិភាគ Settings & Render វីដេអូ Dubbed (FFmpeg)...');
     logToTerminal('CLIENT:VIDEO_GENERATE', `Analyzing settings & sending ${readyItems.length} voice segments to FFmpeg...`);
@@ -814,6 +965,7 @@ window.generateDubbedVideo = async function() {
 
     const payload = {
       videoUrl: state.videoUrl ? state.videoUrl.split('?')[0] : null,
+      masterAudioUrl: state.masterAudioUrl || null,
       subtitles: readyItems.map(s => ({
         id: s.id,
         audioUrl: s.audioUrl ? s.audioUrl.split('?')[0] : null,
@@ -824,7 +976,7 @@ window.generateDubbedVideo = async function() {
       settings: {
         removeSpoken,
         bgVolume,
-        hfToken: state.hfToken || undefined,
+        masterAudioUrl: state.masterAudioUrl || null,
         padBefore: 0.25,
         padAfter: 0.25,
         videoVolume: state.videoVolume ?? 1.0,
@@ -849,6 +1001,7 @@ window.generateDubbedVideo = async function() {
     }
 
     state.dubbedVideoUrl = result.data.dubbedVideoUrl;
+    updateExportButtonState();
     logToTerminal('CLIENT:VIDEO_RENDER_SUCCESS', `Dubbed video generated: ${result.data.dubbedVideoUrl} (${result.data.sizeMb} MB)`);
 
     // Auto-save project so dubbedVideoUrl persists
@@ -871,6 +1024,7 @@ window.generateDubbedVideo = async function() {
       btn.classList.remove('opacity-70', 'cursor-wait');
     }
     if (btnText) btnText.textContent = 'Generate Video';
+    if (banner) banner.classList.add('hidden');
   }
 };
 
@@ -1080,10 +1234,6 @@ window.openSettingsModal = function(focusInputId = null) {
   if (deepgramKeyInput) {
     deepgramKeyInput.value = state.deepgramApiKey || '';
   }
-  const hfTokenInput = document.getElementById('input-hf-token');
-  if (hfTokenInput) {
-    hfTokenInput.value = state.hfToken || '';
-  }
   modal?.classList.remove('hidden');
   modal?.classList.add('flex');
 
@@ -1204,6 +1354,7 @@ export async function executeGoogleTranslation() {
       btn.classList.remove('opacity-70', 'cursor-wait');
     }
     if (btnText) btnText.textContent = 'Translate';
+    if (banner) banner.classList.add('hidden');
   }
 }
 
@@ -1229,28 +1380,38 @@ window.saveSettings = function() {
     state.deepgramApiKey = deepgramKeyInput.value.trim();
     localStorage.setItem('deepgram_api_key', state.deepgramApiKey);
   }
-  const hfTokenInput = document.getElementById('input-hf-token');
-  if (hfTokenInput) {
-    state.hfToken = hfTokenInput.value.trim();
-    localStorage.setItem('hf_token', state.hfToken);
-    // If token removed, update mute voice toggle if no server key
-    const hasKey = Boolean((state.hfToken && state.hfToken.length > 5) || state.serverHasHfToken);
-    if (!hasKey && state.dubbingSettings) {
-      state.dubbingSettings.removeSpokenVoice = false;
-      saveDubbingSettings(state.dubbingSettings);
-      const muteCb = document.getElementById('setting-remove-spoken');
-      const muteV = document.getElementById('val-mute-spoken');
-      if (muteCb) muteCb.checked = false;
-      if (muteV) muteV.textContent = 'OFF';
-    }
-  }
   window.closeSettingsModal();
   window.updateSttModelUI(state.sttModel);
   window.showToast('បានរក្សាទុកការកំណត់ Workspace');
 };
 
+// Export Video Button State Controller
+export function updateExportButtonState() {
+  const btn = document.getElementById('btn-export-video');
+  if (!btn) return;
+  const hasDubbedVideo = Boolean(state.dubbedVideoUrl && String(state.dubbedVideoUrl).trim().length > 0);
+  if (hasDubbedVideo) {
+    btn.removeAttribute('disabled');
+    btn.classList.remove('opacity-40', 'cursor-not-allowed');
+    btn.classList.add('cursor-pointer', 'hover:from-emerald-500', 'hover:to-teal-500');
+    btn.title = 'Export Dubbed Video (នាំចេញវីដេអូដែល Dubbed រួច)';
+  } else {
+    btn.setAttribute('disabled', 'true');
+    btn.classList.add('opacity-40', 'cursor-not-allowed');
+    btn.classList.remove('cursor-pointer', 'hover:from-emerald-500', 'hover:to-teal-500');
+    btn.title = 'សូមចុច Generate Video ជាមុនសិន ទើបអាច Export វីដេអូបាន (Please generate video first)';
+  }
+}
+window.updateExportButtonState = updateExportButtonState;
+
 // Export Video Modal Logic
 window.openExportModal = function() {
+  if (!state.dubbedVideoUrl) {
+    window.showToast?.('⚠️ មិនទាន់មានវីដេអូដែល Dubbed រួចរាល់ទេ! សូមចុចប៊ូតុង "🎬 Generate Video" (នៅខាងក្រោម) ជាមុនសិន');
+    updateExportButtonState();
+    return;
+  }
+
   const modal = document.getElementById('export-video-modal');
   if (!modal) return;
 
@@ -1283,6 +1444,12 @@ window.openExportModal = function() {
   if (state.dubbedVideoUrl) {
     if (videoEl) {
       videoEl.src = state.dubbedVideoUrl;
+      videoEl.onerror = () => {
+        state.dubbedVideoUrl = null;
+        updateExportButtonState();
+        videoEl.classList.add('hidden');
+        bannerEl?.classList.remove('hidden');
+      };
       videoEl.classList.remove('hidden');
     }
     bannerEl?.classList.add('hidden');
@@ -1472,7 +1639,12 @@ window.confirmExportVideo = async function() {
     }
     console.error('Export video error:', err);
     logToTerminal('CLIENT:VIDEO_EXPORT_ERR', `Export video failed: ${err.message}`);
-    window.showToast?.(`❌ បរាជ័យក្នុងការ Export វីដេអូ៖ ${err.message}`);
+    if (err.message && (err.message.includes('not found') || err.message.includes('រកមិនឃើញ'))) {
+      state.dubbedVideoUrl = null;
+      window.showToast?.('⚠️ មិនទាន់មានវីដេអូកាត់តថ្មីនៅលើ Server ទេ! សូមចុចប៊ូតុង "🎬 Generate Video" (នៅខាងក្រោម) ជាមុនសិន');
+    } else {
+      window.showToast?.(`❌ បរាជ័យក្នុងការ Export វីដេអូ៖ ${err.message}`);
+    }
   } finally {
     if (pollInterval) {
       clearInterval(pollInterval);
@@ -1576,23 +1748,102 @@ window.deleteHistoryVideo = async function(id, fileName) {
   }
 };
 
-window.clearAllHistoryData = async function() {
-  const confirmed = window.confirm('⚠️ ការព្រមាន៖ តើលោកអ្នកពិតជាចង់លុបរាល់វីដេអូ Dubbed ទាំងអស់ចេញពីកុំព្យូទ័រមែនទេ? សកម្មភាពនេះមិនអាចត្រឡប់ក្រោយបានឡើយ។');
-  if (!confirmed) return;
+let lastStorageStats = null;
+
+window.openCleanStorageModal = function() {
+  const modal = document.getElementById('clean-storage-modal');
+  if (!modal) return;
+
+  const vStat = document.getElementById('clean-stat-videos');
+  const vcStat = document.getElementById('clean-stat-voices');
+  const tStat = document.getElementById('clean-stat-temp');
+
+  if (lastStorageStats) {
+    if (vStat) vStat.textContent = `${lastStorageStats.videos?.count || 0} files (${lastStorageStats.videos?.sizeMb || 0} MB)`;
+    if (vcStat) vcStat.textContent = `${lastStorageStats.voices?.count || 0} files (${lastStorageStats.voices?.sizeMb || 0} MB)`;
+    if (tStat) tStat.textContent = `${lastStorageStats.temp?.count || 0} files (${lastStorageStats.temp?.sizeMb || 0} MB)`;
+  }
+
+  modal.classList.remove('hidden');
+  modal.classList.add('flex');
+  if (window.lucide && typeof window.lucide.createIcons === 'function') {
+    window.lucide.createIcons();
+  }
+};
+
+window.closeCleanStorageModal = function() {
+  const modal = document.getElementById('clean-storage-modal');
+  modal?.classList.add('hidden');
+  modal?.classList.remove('flex');
+};
+
+window.toggleSelectAllCleanOptions = function() {
+  const v = document.getElementById('clean-opt-videos');
+  const vc = document.getElementById('clean-opt-voices');
+  const t = document.getElementById('clean-opt-temp');
+  const p = document.getElementById('clean-opt-project');
+  const allChecked = Boolean(v?.checked && vc?.checked && t?.checked && p?.checked);
+  const nextVal = !allChecked;
+  if (v) v.checked = nextVal;
+  if (vc) vc.checked = nextVal;
+  if (t) t.checked = nextVal;
+  if (p) p.checked = nextVal;
+};
+
+window.executeCleanStorage = async function() {
+  const clearVideos = document.getElementById('clean-opt-videos')?.checked ?? true;
+  const clearVoices = document.getElementById('clean-opt-voices')?.checked ?? true;
+  const clearTemp = document.getElementById('clean-opt-temp')?.checked ?? true;
+  const clearProject = document.getElementById('clean-opt-project')?.checked ?? true;
+
+  if (!clearVideos && !clearVoices && !clearTemp && !clearProject) {
+    window.showToast?.('⚠️ សូមជ្រើសរើសយ៉ាងហោចណាស់ ១ ជម្រើសដើម្បីសម្អាត');
+    return;
+  }
+
+  const btn = document.getElementById('btn-confirm-clean-storage');
+  if (btn) {
+    btn.setAttribute('disabled', 'true');
+    btn.classList.add('opacity-70', 'cursor-wait');
+  }
 
   try {
-    const res = await fetch('/api/history/clear', { method: 'POST' });
+    const res = await fetch('/api/history/clear', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ clearVideos, clearVoices, clearTemp, clearProjects: clearProject })
+    });
     const result = await res.json();
     if (!res.ok || !result.success) {
       throw new Error(result.message || 'Failed to clear');
     }
+
+    if (clearProject) {
+      try { localStorage.removeItem('dubber_autosave_project'); } catch (_) {}
+      state.dubbedVideoUrl = null;
+      state.masterAudioUrl = null;
+      window.updateExportButtonState?.();
+    }
+
+    window.closeCleanStorageModal();
     window.closeHistoryPreview();
-    window.showToast?.('🗑️ បានសម្អាតរាល់ប្រវត្តិវីដេអូទាំងអស់ជោគជ័យ');
+    const freed = result.data?.freedMb || 0;
+    const count = result.data?.deletedFilesCount || 0;
+    window.showToast?.(`🗑️ បានសម្អាតទិន្នន័យ ${count} ឯកសារជោគជ័យ (បានទំហំ Disk មកវិញ ${freed} MB)!`);
     await window.loadAndRenderHistory(true);
   } catch (err) {
-    console.error('Clear history error:', err);
-    window.showToast?.(`❌ បរាជ័យក្នុងការសម្អាតប្រវត្តិ៖ ${err.message}`);
+    console.error('Clean storage error:', err);
+    window.showToast?.(`❌ បរាជ័យក្នុងការសម្អាត៖ ${err.message}`);
+  } finally {
+    if (btn) {
+      btn.removeAttribute('disabled');
+      btn.classList.remove('opacity-70', 'cursor-wait');
+    }
   }
+};
+
+window.clearAllHistoryData = async function() {
+  window.openCleanStorageModal();
 };
 
 window.loadAndRenderHistory = async function(silent = false) {
@@ -1623,7 +1874,8 @@ window.loadAndRenderHistory = async function(silent = false) {
       throw new Error(result.message || 'Failed to load history');
     }
 
-    const { items = [], totalCount = 0, totalSizeMb = 0 } = result.data || {};
+    const { items = [], totalCount = 0, totalSizeMb = 0, storageStats } = result.data || {};
+    lastStorageStats = storageStats || { videos: { count: totalCount, sizeMb: totalSizeMb }, voices: { count: 0, sizeMb: 0 }, temp: { count: 0, sizeMb: 0 } };
 
     // Update counts & badges
     if (headerCount) headerCount.textContent = `${totalCount} វីដេអូ`;
@@ -2016,7 +2268,6 @@ async function checkBackendConnection() {
         if (data.data.hasGroqKey) state.serverHasGroqKey = true;
         if (data.data.hasGeminiKey) state.serverHasGeminiKey = true;
         if (data.data.hasDeepgramKey) state.serverHasDeepgramKey = true;
-        if (data.data.hasHfToken) state.serverHasHfToken = true;
       }
       badge.innerHTML = `
         <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
@@ -2150,31 +2401,15 @@ export function initDubbingSettingsUI() {
     };
   }
 
-  // 6. Mute Original Voice (Protected by Hugging Face Token)
+  // 6. Mute Original Voice (Local PCM Muter - 100% Offline)
   const muteCheckbox = document.getElementById('setting-remove-spoken');
   const muteVal = document.getElementById('val-mute-spoken');
   if (muteCheckbox && muteVal) {
-    const hasHfKey = Boolean((state.hfToken && state.hfToken.trim().length > 5) || state.serverHasHfToken);
-    // If user has no key, enforce OFF state
-    if (!hasHfKey) {
-      s.removeSpokenVoice = false;
-    }
     muteCheckbox.checked = Boolean(s.removeSpokenVoice);
     muteVal.textContent = muteCheckbox.checked ? 'ON' : 'OFF';
 
     muteCheckbox.onchange = (e) => {
       const checked = e.target.checked;
-      const userHasKey = Boolean((state.hfToken && state.hfToken.trim().length > 5) || state.serverHasHfToken);
-      if (checked && !userHasKey) {
-        // Reject turning ON if no key is present!
-        e.target.checked = false;
-        muteVal.textContent = 'OFF';
-        state.dubbingSettings.removeSpokenVoice = false;
-        saveDubbingSettings(state.dubbingSettings);
-        window.showToast?.('⚠️ សូមបញ្ចូល Hugging Face Token នៅក្នុង Settings ជាមុនសិន ដើម្បីប្រើមុខងារ Mute Voice!');
-        window.openSettingsModal?.('input-hf-token');
-        return;
-      }
       state.dubbingSettings.removeSpokenVoice = checked;
       muteVal.textContent = checked ? 'ON' : 'OFF';
       saveDubbingSettings(state.dubbingSettings);
@@ -2261,8 +2496,10 @@ function getProjectPayload() {
       duration: state.duration || 0,
       videoUrl: state.videoUrl || null,
       dubbedVideoUrl: state.dubbedVideoUrl || null,
-      previewMode: state.previewMode || 'before'
+      previewMode: state.previewMode || 'before',
+      masterAudioUrl: state.masterAudioUrl || null
     },
+    masterAudioUrl: state.masterAudioUrl || null,
     subtitles: (state.subtitles || []).map(s => ({
       id: s.id,
       selected: Boolean(s.selected),
@@ -2409,6 +2646,12 @@ window.loadSavedProject = async function() {
     } catch (_) {}
 
     if (localData) {
+      if (localData.masterAudioUrl || localData.video?.masterAudioUrl) {
+        state.masterAudioUrl = localData.masterAudioUrl || localData.video.masterAudioUrl;
+        if (state.masterAudioUrl && window.loadMasterAudioTrack) {
+          window.loadMasterAudioTrack(state.masterAudioUrl);
+        }
+      }
       if (localData.video) {
         state.duration = localData.video.duration || 0;
         state.videoName = localData.video.name || '';
@@ -2433,6 +2676,7 @@ window.loadSavedProject = async function() {
       if (localData.dubbingSettings) {
         state.dubbingSettings = { ...state.dubbingSettings, ...localData.dubbingSettings };
       }
+      updateExportButtonState();
     }
 
     // 2. Fetch authoritative project state from backend server file
@@ -2441,6 +2685,12 @@ window.loadSavedProject = async function() {
       const json = await res.json();
       if (json && json.success && json.data) {
         const proj = json.data;
+        if (proj.masterAudioUrl || proj.video?.masterAudioUrl) {
+          state.masterAudioUrl = proj.masterAudioUrl || proj.video.masterAudioUrl;
+          if (state.masterAudioUrl && window.loadMasterAudioTrack) {
+            window.loadMasterAudioTrack(state.masterAudioUrl);
+          }
+        }
         if (proj.video) {
           state.duration = proj.video.duration || state.duration || 0;
           state.videoName = proj.video.name || state.videoName || '';
@@ -2475,12 +2725,15 @@ window.loadSavedProject = async function() {
               duration: state.duration,
               videoUrl: state.videoUrl,
               dubbedVideoUrl: state.dubbedVideoUrl,
-              previewMode: state.previewMode
+              previewMode: state.previewMode,
+              masterAudioUrl: state.masterAudioUrl
             },
+            masterAudioUrl: state.masterAudioUrl,
             subtitles: state.subtitles,
             dubbingSettings: state.dubbingSettings
           }));
         } catch (_) {}
+        updateExportButtonState();
       }
     }
 
@@ -2544,9 +2797,11 @@ async function bootstrapApp() {
     window.loadAndRenderHistory?.(true);
     window.loadRvcModels?.();
     window.updateSttModelUI?.(state.sttModel);
+    window.loadSystemDependencies?.(false);
 
     // Auto-restore project from localStorage & server on startup
     await window.loadSavedProject();
+    updateExportButtonState();
 
     // Hook auto-save to state events
     state.on('subtitlesChanged', () => {

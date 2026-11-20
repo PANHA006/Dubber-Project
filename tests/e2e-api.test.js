@@ -406,6 +406,24 @@ async function runE2ETests() {
       delete keyManager.keyStates[testKeyB];
       keyManager.saveState();
 
+      // --- TEST 15: Assemble Master Voice API ---
+      const assembleRes = await fetch(`${baseUrl}/api/voice/assemble-master`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ subtitles: [] })
+      });
+      const assembleData = await assembleRes.json();
+      assert(
+        'POST /api/voice/assemble-master validates empty subtitles or duration with 400',
+        assembleRes.status === 400 && assembleData.success === false
+      );
+
+      const vpJs = fs.readFileSync(path.join(__dirname, '..', 'public', 'js', 'video-player.js'), 'utf8');
+      assert(
+        'video-player.js exports loadMasterAudioTrack and handles masterTimelineAudio',
+        vpJs.includes('loadMasterAudioTrack') && vpJs.includes('masterTimelineAudio')
+      );
+
       // --- TEST SUMMARY ---
       console.log(`\n------------------------------------------------------`);
       console.log(`  Tests Passed : ${passedCount}`);

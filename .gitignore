@@ -18,7 +18,6 @@ __pycache__/
 .mypy_cache/
 *.egg-info/
 dist/
-build/
 eggs/
 .eggs/
 parts/
@@ -29,7 +28,8 @@ develop-eggs/
 *.egg
 
 # Environment variables and sensitive secrets
-.env
+# .env is tracked per project requirements
+!.env
 .env.local
 .env.*.local
 .env.development.local
@@ -57,9 +57,9 @@ pnpm-debug.log*
 coverage/
 .nyc_output/
 
-# Build outputs & Temporary scratch directories
+# Build outputs & Temporary scratch directories (dist is build output, build/ holds icons/installer assets)
 dist/
-build/
+!build/
 tmp/
 temp/
 .temp/

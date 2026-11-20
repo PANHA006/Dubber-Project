@@ -1,13 +1,17 @@
 const fs = require('fs');
 const path = require('path');
+const config = require('../config');
 const { formatTerminalLog } = require('../utils/terminal-logger');
 
 class HistoryService {
   constructor() {
-    this.historyDir = path.join(__dirname, '../../storage/history');
+    this.historyDir = path.join(config.storageDir, 'history');
     this.historyFilePath = path.join(this.historyDir, 'video_history.json');
-    this.videosDir = path.join(__dirname, '../../storage/videos');
-    this.exportsDir = path.join(__dirname, '../../storage/exports');
+    this.videosDir = path.join(config.storageDir, 'videos');
+    this.exportsDir = path.join(config.storageDir, 'exports');
+    this.voicesDir = path.join(config.storageDir, 'voices');
+    this.tempDir = path.join(config.storageDir, 'temp');
+    this.projectsDir = path.join(config.storageDir, 'projects');
     this.ensureDirs();
   }
 
@@ -23,6 +27,15 @@ class HistoryService {
     }
     if (!fs.existsSync(this.exportsDir)) {
       fs.mkdirSync(this.exportsDir, { recursive: true });
+    }
+    if (!fs.existsSync(this.voicesDir)) {
+      fs.mkdirSync(this.voicesDir, { recursive: true });
+    }
+    if (!fs.existsSync(this.tempDir)) {
+      fs.mkdirSync(this.tempDir, { recursive: true });
+    }
+    if (!fs.existsSync(this.projectsDir)) {
+      fs.mkdirSync(this.projectsDir, { recursive: true });
     }
   }
 
@@ -131,7 +144,34 @@ class HistoryService {
   }
 
   /**
-   * Get all history items with aggregate stats
+   * Helper to compute file count and total size in MB for a directory
+   */
+  _getFolderStats(dirPath) {
+    if (!fs.existsSync(dirPath)) return { count: 0, sizeMb: 0 };
+    let count = 0;
+    let totalBytes = 0;
+    try {
+      const files = fs.readdirSync(dirPath);
+      for (const file of files) {
+        if (file === '.gitkeep') continue;
+        const fullPath = path.join(dirPath, file);
+        try {
+          const stat = fs.statSync(fullPath);
+          if (stat.isFile()) {
+            count++;
+            totalBytes += stat.size;
+          }
+        } catch (_) {}
+      }
+    } catch (_) {}
+    return {
+      count,
+      sizeMb: Math.round((totalBytes / (1024 * 1024)) * 100) / 100
+    };
+  }
+
+  /**
+   * Get all history items with aggregate stats and storage breakdown
    */
   getHistory() {
     const rawItems = this._readHistoryFile();
@@ -140,10 +180,21 @@ class HistoryService {
     const totalSizeBytes = items.reduce((acc, it) => acc + (it.sizeMb || 0), 0);
     const totalSizeMb = Math.round(totalSizeBytes * 100) / 100;
 
+    const voicesStats = this._getFolderStats(this.voicesDir);
+    const tempStats = this._getFolderStats(this.tempDir);
+
+    const grandTotalSizeMb = Math.round((totalSizeMb + voicesStats.sizeMb + tempStats.sizeMb) * 100) / 100;
+
     return {
       items,
       totalCount,
-      totalSizeMb
+      totalSizeMb,
+      storageStats: {
+        videos: { count: totalCount, sizeMb: totalSizeMb },
+        voices: voicesStats,
+        temp: tempStats,
+        grandTotalSizeMb
+      }
     };
   }
 
@@ -202,29 +253,105 @@ class HistoryService {
   }
 
   /**
-   * Clear all history records and delete all associated video files from disk
+   * Clear all history records and delete requested files via clearAllHistory()
    */
-  clearAllHistory() {
+  clearAllHistory(options = {}) {
     const { items } = this.getHistory();
-    let deletedCount = 0;
+    const {
+      clearVideos = true,
+      clearVoices = true,
+      clearTemp = true,
+      clearProjects = true
+    } = options;
 
-    for (const item of items) {
-      if (item.filePath && fs.existsSync(item.filePath)) {
-        try {
-          fs.unlinkSync(item.filePath);
-          deletedCount++;
-        } catch (err) {
-          formatTerminalLog('HISTORY:CLEAR_WARN', `Failed to delete ${item.filePath}: ${err.message}`);
+    let deletedCount = 0;
+    let deletedBytes = 0;
+
+    // 1. Clear Videos in history
+    if (clearVideos !== false) {
+      for (const item of items) {
+        if (item.filePath && fs.existsSync(item.filePath)) {
+          try {
+            const stat = fs.statSync(item.filePath);
+            deletedBytes += stat.size;
+            fs.unlinkSync(item.filePath);
+            deletedCount++;
+          } catch (err) {
+            formatTerminalLog('HISTORY:CLEAR_WARN', `Failed to delete ${item.filePath}: ${err.message}`);
+          }
         }
+      }
+      this._writeHistoryFile([]);
+    }
+
+    // 2. Clear Voices (storage/voices/*.mp3, *.wav, *.meta.json)
+    if (clearVoices !== false && fs.existsSync(this.voicesDir)) {
+      try {
+        const voiceFiles = fs.readdirSync(this.voicesDir);
+        for (const vf of voiceFiles) {
+          if (vf === '.gitkeep') continue;
+          const fullPath = path.join(this.voicesDir, vf);
+          try {
+            const stat = fs.statSync(fullPath);
+            if (stat.isFile()) {
+              deletedBytes += stat.size;
+              fs.unlinkSync(fullPath);
+              deletedCount++;
+            }
+          } catch (_) {}
+        }
+      } catch (err) {
+        formatTerminalLog('HISTORY:CLEAR_VOICES_ERR', `Failed to clear voices: ${err.message}`);
       }
     }
 
-    this._writeHistoryFile([]);
-    formatTerminalLog('HISTORY:CLEARED_ALL', `Cleared all history: ${deletedCount} files deleted`);
+    // 3. Clear Temp cache & stems (storage/temp/*)
+    if (clearTemp !== false && fs.existsSync(this.tempDir)) {
+      try {
+        const tempFiles = fs.readdirSync(this.tempDir);
+        for (const tf of tempFiles) {
+          if (tf === '.gitkeep') continue;
+          const fullPath = path.join(this.tempDir, tf);
+          try {
+            const stat = fs.statSync(fullPath);
+            if (stat.isFile()) {
+              deletedBytes += stat.size;
+              fs.unlinkSync(fullPath);
+              deletedCount++;
+            }
+          } catch (_) {}
+        }
+      } catch (err) {
+        formatTerminalLog('HISTORY:CLEAR_TEMP_ERR', `Failed to clear temp: ${err.message}`);
+      }
+    }
+
+    // 4. Clear Projects if requested (storage/projects/*)
+    if (clearProjects !== false && fs.existsSync(this.projectsDir)) {
+      try {
+        const projFiles = fs.readdirSync(this.projectsDir);
+        for (const pf of projFiles) {
+          if (pf === '.gitkeep') continue;
+          const fullPath = path.join(this.projectsDir, pf);
+          try {
+            const stat = fs.statSync(fullPath);
+            if (stat.isFile()) {
+              deletedBytes += stat.size;
+              fs.unlinkSync(fullPath);
+              deletedCount++;
+            }
+          } catch (_) {}
+        }
+      } catch (_) {}
+    }
+
+    const freedMb = Math.round((deletedBytes / (1024 * 1024)) * 100) / 100;
+    formatTerminalLog('HISTORY:CLEARED_ALL', `Deep cleaned storage: ${deletedCount} files deleted (${freedMb} MB freed)`);
     return {
       success: true,
       clearedCount: items.length,
-      deletedFilesCount: deletedCount
+      deletedFilesCount: deletedCount,
+      freedMb
     };
   }
 }

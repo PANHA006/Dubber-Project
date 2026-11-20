@@ -1,10 +1,11 @@
 const { spawn } = require('child_process');
 const path = require('path');
 const fs = require('fs');
+const config = require('../config');
 const { formatTerminalLog, formatTerminalProgress } = require('../utils/terminal-logger');
+const { parseTimeToSeconds } = require('../utils/time');
 const historyService = require('./history.service');
 const pcmMuterService = require('./pcm-muter.service');
-const aiAudioSeparatorService = require('./ai-audio-separator.service');
 
 /**
  * Report FFmpeg's own progress while a long render runs.
@@ -118,9 +119,9 @@ function trackFFmpegProgress(proc, { totalDuration = 0, label = 'Muxing...', tag
 
 class VideoRendererService {
   constructor() {
-    this.videoStorageDir = path.join(__dirname, '../../storage/videos');
-    this.voiceStorageDir = path.join(__dirname, '../../storage/voices');
-    this.exportStorageDir = path.join(__dirname, '../../storage/exports');
+    this.videoStorageDir = path.join(config.storageDir, 'videos');
+    this.voiceStorageDir = path.join(config.storageDir, 'voices');
+    this.exportStorageDir = path.join(config.storageDir, 'exports');
     this.ensureDirs();
   }
 
@@ -192,7 +193,7 @@ class VideoRendererService {
         '-show_entries', 'stream=codec_type',
         '-of', 'default=noprint_wrappers=1:nokey=1',
         filePath
-      ]);
+      ], { windowsHide: true });
       let output = '';
       ffprobe.stdout.on('data', chunk => { output += chunk.toString(); });
       ffprobe.on('close', () => {
@@ -214,7 +215,7 @@ class VideoRendererService {
         '-show_entries', 'format=duration',
         '-of', 'default=noprint_wrappers=1:nokey=1',
         filePath
-      ]);
+      ], { windowsHide: true });
       let output = '';
       ffprobe.stdout.on('data', chunk => { output += chunk.toString(); });
       ffprobe.on('close', () => {
@@ -235,8 +236,9 @@ class VideoRendererService {
    * @param {Object} options.settings
    * @returns {Promise<{success: boolean, dubbedVideoUrl: string, filename: string, sizeMb: number, duration: number}>}
    */
-  async renderDubbedVideo({ videoUrl, subtitles = [], settings = {} }) {
+  async renderDubbedVideo(options = {}) {
     this.ensureDirs();
+    const { videoUrl, subtitles = [], settings = {} } = options;
 
     const videoPath = this.resolveVideoPath(videoUrl);
     if (!videoPath || !fs.existsSync(videoPath)) {
@@ -252,10 +254,13 @@ class VideoRendererService {
       if (!sub) continue;
       const audioPath = this.resolveAudioPath(sub.audioUrl);
       if (audioPath && fs.existsSync(audioPath)) {
-        const startSec = Math.max(0, parseFloat(sub.startSec ?? sub.start ?? 0) || 0);
-        const endSec = sub.endSec !== undefined && sub.endSec !== null
-          ? Math.max(startSec + 0.5, parseFloat(sub.endSec))
-          : (sub.end ? Math.max(startSec + 0.5, parseFloat(sub.end)) : (startSec + 2.5));
+        const startSec = Math.max(0, parseTimeToSeconds(sub.startSec ?? sub.start));
+        const rawEnd = sub.endSec !== undefined && sub.endSec !== null
+          ? parseTimeToSeconds(sub.endSec)
+          : (sub.end ? parseTimeToSeconds(sub.end) : null);
+        const endSec = rawEnd !== null
+          ? Math.max(startSec + 0.5, rawEnd)
+          : (startSec + 2.5);
 
         validVoices.push({
           id: sub.id,
@@ -266,6 +271,9 @@ class VideoRendererService {
         });
       }
     }
+
+    // Sort validVoices chronologically by startSec to prevent out-of-order adelay mixing
+    validVoices.sort((a, b) => a.startSec - b.startSec);
 
     if (subtitles.length > 0 && validVoices.length === 0) {
       throw new Error(`រកមិនឃើញឯកសារសំឡេងខ្មែរ (Voice audio clips) សម្រាប់បញ្ចូលក្នុងវីដេអូទេ! សូមពិនិត្យមើលសំឡេង ឬចុច 'Generate Voice' ម្តងទៀត។`);
@@ -293,9 +301,15 @@ class VideoRendererService {
     const outputPath = path.join(this.videoStorageDir, outputFilename);
 
     // STAGE 1: Pre-mix voice clips into a synchronized master voice track
-    // Chunks voice clips in batches of 35 to prevent Windows command-line limit (spawn ENAMETOOLONG)
+    // If a pre-assembled Master Timeline Audio exists, reuse it directly (Ultra-Fast 0ms re-assembly)
     let masterVoiceData = null;
-    if (validVoices.length > 0) {
+    const providedMasterUrl = settings.masterAudioUrl || (options && options.masterAudioUrl);
+    const providedMasterPath = providedMasterUrl ? this.resolveAudioPath(providedMasterUrl) : null;
+
+    if (providedMasterPath && fs.existsSync(providedMasterPath)) {
+      formatTerminalLog('VIDEO:USE_EXISTING_MASTER', `Reusing pre-built Master Voice Timeline track: ${path.basename(providedMasterPath)} (Ultra-Fast 0ms re-assembly)`);
+      masterVoiceData = { masterVoicePath: providedMasterPath, tempFiles: [] };
+    } else if (validVoices.length > 0) {
       masterVoiceData = await this.assembleMasterVoiceTrack(validVoices, dubVolMult, videoDuration);
     }
 
@@ -349,15 +363,12 @@ class VideoRendererService {
               formatTerminalLog('MUTE:SUMMARY', `Smart-ducked all ${validVoices.length} speech segments from ${firstS}s to ${lastE}s (continuous background audio)`);
             }
 
-            const mutedBgmPath = await aiAudioSeparatorService.extractAndIsolateBgm({
+            const mutedBgmPath = await pcmMuterService.extractAndMuteBackgroundAudio({
               videoPath,
               subtitles: validVoices,
-              settings: { bgVolume: duckLevelPct, padBefore, padAfter, hfToken: settings ? settings.hfToken : null }
+              settings: { bgVolume: duckLevelPct, padBefore, padAfter }
             });
-            // Only cleanup if it is a temporary scratch file and not a persistent cached BGM
-            if (!mutedBgmPath.includes('cache')) {
-              tempCleanups.push(mutedBgmPath);
-            }
+            tempCleanups.push(mutedBgmPath);
 
             ffmpegArgs.push('-i', mutedBgmPath);
             extraAudioInputs.push(mutedBgmPath);
@@ -367,8 +378,9 @@ class VideoRendererService {
 
             // Outside speech, scale background audio to bgVolumePct (e.g. 15% -> 0.15)
             const bgScale = ((Math.max(0, Math.min(100, bgVolumePct)) / 100) * videoVolMult);
-            filterComplex.push(`[1:a]volume=${bgScale.toFixed(3)}[bgm_vol]`);
-            filterComplex.push(`[bgm_vol][2:a]amix=inputs=2:dropout_transition=0:normalize=0[final_audio]`);
+            filterComplex.push(`[1:a]aresample=44100:async=1,volume=${bgScale.toFixed(3)}[bgm_vol]`);
+            filterComplex.push(`[2:a]aresample=44100:async=1[master_sync]`);
+            filterComplex.push(`[bgm_vol][master_sync]amix=inputs=2:dropout_transition=0:normalize=0[final_audio]`);
             finalAudioMap = '[final_audio]';
           } else {
             // Mute Voice is OFF, so the original track is kept — but it must still
@@ -385,8 +397,9 @@ class VideoRendererService {
             ffmpegArgs.push('-i', masterVoiceData.masterVoicePath);
             extraAudioInputs.push(masterVoiceData.masterVoicePath);
 
-            filterComplex.push(`[0:a]volume=${bgScale.toFixed(3)}[orig_aud]`);
-            filterComplex.push(`[orig_aud][1:a]amix=inputs=2:dropout_transition=0:normalize=0[final_audio]`);
+            filterComplex.push(`[0:a]aresample=44100:async=1,volume=${bgScale.toFixed(3)}[orig_aud]`);
+            filterComplex.push(`[1:a]aresample=44100:async=1[master_sync]`);
+            filterComplex.push(`[orig_aud][master_sync]amix=inputs=2:dropout_transition=0:normalize=0[final_audio]`);
             finalAudioMap = '[final_audio]';
           }
         } else {
@@ -398,7 +411,7 @@ class VideoRendererService {
       } else {
         // No dub voices
         if (videoHasAudio) {
-          filterComplex.push(`[0:a]volume=${videoVolMult.toFixed(3)}[orig_aud]`);
+          filterComplex.push(`[0:a]aresample=44100:async=1,volume=${videoVolMult.toFixed(3)}[orig_aud]`);
           finalAudioMap = '[orig_aud]';
         } else {
           filterComplex.push(`anullsrc=r=44100:cl=stereo[silent_audio]`);
@@ -424,7 +437,7 @@ class VideoRendererService {
         ffmpegArgs.push('-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '23');
       }
 
-      ffmpegArgs.push('-c:a', 'aac', '-b:a', '192k');
+      ffmpegArgs.push('-c:a', 'aac', '-b:a', '192k', '-ar', '44100');
       if (videoDuration > 0) {
         ffmpegArgs.push('-t', videoDuration.toFixed(3));
       }
@@ -441,7 +454,7 @@ class VideoRendererService {
       });
 
       return await new Promise((resolve, reject) => {
-        const proc = spawn('ffmpeg', ffmpegArgs);
+        const proc = spawn('ffmpeg', ffmpegArgs, { windowsHide: true });
         let stderr = '';
 
         // Live progress bar for the whole mux, so a multi-minute stage on a long
@@ -537,6 +550,24 @@ class VideoRendererService {
       return null;
     }
 
+    // Layer 2: Smart Anti-Collision Boundary Guard
+    // Prevent adjacent dialogue lines from colliding or overlapping
+    for (let i = 0; i < validVoices.length; i++) {
+      const curr = validVoices[i];
+      const next = validVoices[i + 1];
+      if (next && typeof next.startSec === 'number' && typeof curr.startSec === 'number') {
+        const gap = next.startSec - curr.startSec;
+        if (gap > 0.05) {
+          // Leave a 50ms (0.05s) clean breath buffer before the next line starts
+          curr.maxAllowedDuration = Math.max(0.3, Math.round((gap - 0.05) * 1000) / 1000);
+        } else {
+          curr.maxAllowedDuration = null;
+        }
+      } else {
+        curr.maxAllowedDuration = null; // Last clip or no subsequent clip
+      }
+    }
+
     const BATCH_SIZE = 35;
     const tempFiles = [];
 
@@ -554,7 +585,15 @@ class VideoRendererService {
           args.push('-i', v.audioPath);
           const delay = Math.max(0, v.delayMs || 0);
           const label = `b${idx}`;
-          filterComplex.push(`[${idx}:a]adelay=${delay}|${delay},volume=${dubVolMult.toFixed(3)}[${label}]`);
+          // Resample from 24kHz to unified 44.1kHz Stereo with sample clock lock
+          let filterChain = `[${idx}:a]aresample=44100:async=1,aformat=sample_fmts=s16:sample_rates=44100:channel_layouts=stereo`;
+          if (typeof v.maxAllowedDuration === 'number' && v.maxAllowedDuration > 0.2) {
+            const trimDur = v.maxAllowedDuration.toFixed(3);
+            const fadeStart = Math.max(0, v.maxAllowedDuration - 0.08).toFixed(3);
+            filterChain += `,atrim=0:${trimDur},asetpts=PTS-STARTPTS,afade=t=out:st=${fadeStart}:d=0.08`;
+          }
+          filterChain += `,adelay=${delay}:all=1,volume=${dubVolMult.toFixed(3)}[${label}]`;
+          filterComplex.push(filterChain);
           mixInputs.push(`[${label}]`);
         });
 
@@ -566,14 +605,14 @@ class VideoRendererService {
           args.push('-filter_complex', filterComplex.join('; '), '-map', '[batch_out]');
         }
 
-        args.push('-c:a', 'pcm_s16le');
+        args.push('-c:a', 'pcm_s16le', '-ar', '44100', '-ac', '2');
         if (videoDuration > 0) {
           args.push('-t', videoDuration.toFixed(3));
         }
         args.push(batchOutPath);
 
         await new Promise((resolve, reject) => {
-          const proc = spawn('ffmpeg', args);
+          const proc = spawn('ffmpeg', args, { windowsHide: true });
           let errStr = '';
           proc.stderr.on('data', chunk => { errStr += chunk.toString(); });
           proc.on('close', code => {
@@ -625,14 +664,14 @@ class VideoRendererService {
         mergeArgs.push('-i', sp);
       });
       mergeArgs.push('-filter_complex', `amix=inputs=${batchStemPaths.length}:dropout_transition=0:normalize=0[master_out]`);
-      mergeArgs.push('-map', '[master_out]', '-c:a', 'pcm_s16le');
+      mergeArgs.push('-map', '[master_out]', '-c:a', 'pcm_s16le', '-ar', '44100', '-ac', '2');
       if (videoDuration > 0) {
         mergeArgs.push('-t', videoDuration.toFixed(3));
       }
       mergeArgs.push(masterPath);
 
       await new Promise((resolve, reject) => {
-        const proc = spawn('ffmpeg', mergeArgs);
+        const proc = spawn('ffmpeg', mergeArgs, { windowsHide: true });
         let errStr = '';
         proc.stderr.on('data', chunk => { errStr += chunk.toString(); });
         proc.on('close', code => {
@@ -651,6 +690,113 @@ class VideoRendererService {
       });
       throw err;
     }
+  }
+
+  /**
+   * Builds a persistent, full-timeline master audio file from subtitles.
+   * Total audio duration equals original video duration.
+   * Silence gaps are naturally filled with silence.
+   */
+  async buildTimelineMasterAudio({ videoUrl = null, subtitles = [], videoDuration = 0, dubVolume = 1.0 }) {
+    this.ensureDirs();
+
+    let targetDuration = videoDuration;
+    if ((!targetDuration || targetDuration <= 0) && videoUrl) {
+      const resolvedVideo = this.resolveVideoPath(videoUrl);
+      if (resolvedVideo && fs.existsSync(resolvedVideo)) {
+        targetDuration = await this.getDuration(resolvedVideo);
+      }
+    }
+
+    const validVoices = [];
+    for (const sub of subtitles) {
+      if (!sub) continue;
+      const audioPath = this.resolveAudioPath(sub.audioUrl);
+      if (audioPath && fs.existsSync(audioPath)) {
+        const startSec = Math.max(0, parseTimeToSeconds(sub.startSec ?? sub.start));
+        const rawEnd = sub.endSec !== undefined && sub.endSec !== null
+          ? parseTimeToSeconds(sub.endSec)
+          : (sub.end ? parseTimeToSeconds(sub.end) : null);
+        const endSec = rawEnd !== null
+          ? Math.max(startSec + 0.5, rawEnd)
+          : (startSec + 2.5);
+
+        validVoices.push({
+          id: sub.id,
+          audioPath,
+          startSec,
+          endSec,
+          delayMs: Math.round(startSec * 1000)
+        });
+      }
+    }
+
+    validVoices.sort((a, b) => a.startSec - b.startSec);
+
+    if (validVoices.length === 0) {
+      throw new Error('មិនទាន់មានសំឡេង AI ណាមួយត្រូវបានបង្កើតនៅឡើយទេ (No valid voice audio clips found)');
+    }
+
+    // If targetDuration is still 0, compute from the last voice clip
+    if (!targetDuration || targetDuration <= 0) {
+      const lastVoice = validVoices[validVoices.length - 1];
+      targetDuration = lastVoice.endSec + 2.0;
+    }
+
+    formatTerminalLog('MASTER_TIMELINE:START', `Assembling full-timeline master audio for ${validVoices.length} clips (Duration: ${targetDuration.toFixed(1)}s)...`);
+
+    const masterVoiceData = await this.assembleMasterVoiceTrack(validVoices, dubVolume, targetDuration);
+    if (!masterVoiceData || !masterVoiceData.masterVoicePath || !fs.existsSync(masterVoiceData.masterVoicePath)) {
+      throw new Error('បរាជ័យក្នុងការផ្គុំ Master Voice Timeline');
+    }
+
+    // Save as persistent master track (high-efficiency MP3 for browser preview and direct muxing)
+    const masterFilename = `master_timeline_${Date.now()}.mp3`;
+    const masterFinalPath = path.join(this.voiceStorageDir, masterFilename);
+
+    await new Promise((resolve, reject) => {
+      const args = [
+        '-y',
+        '-i', masterVoiceData.masterVoicePath,
+        '-c:a', 'libmp3lame',
+        '-b:a', '192k',
+        '-t', targetDuration.toFixed(3),
+        masterFinalPath
+      ];
+      const proc = spawn('ffmpeg', args, { windowsHide: true });
+      let errStr = '';
+      proc.stderr.on('data', d => { errStr += d.toString(); });
+      proc.on('close', code => {
+        if (code === 0 && fs.existsSync(masterFinalPath)) {
+          resolve(masterFinalPath);
+        } else {
+          reject(new Error(`MP3 conversion of master audio failed: ${errStr.slice(-200)}`));
+        }
+      });
+      proc.on('error', reject);
+    });
+
+    // Clean up temporary stem files from assembleMasterVoiceTrack
+    if (Array.isArray(masterVoiceData.tempFiles)) {
+      for (const tf of masterVoiceData.tempFiles) {
+        if (tf && fs.existsSync(tf)) {
+          try { fs.unlinkSync(tf); } catch (_) {}
+        }
+      }
+    }
+
+    const fileStats = fs.statSync(masterFinalPath);
+    const sizeMb = Math.round((fileStats.size / (1024 * 1024)) * 100) / 100;
+
+    formatTerminalLog('MASTER_TIMELINE:DONE', `Master Timeline Audio assembled successfully: ${masterFilename} (${sizeMb} MB, ${targetDuration.toFixed(1)}s)`);
+
+    return {
+      masterAudioUrl: `/storage/voices/${masterFilename}`,
+      masterAudioPath: masterFinalPath,
+      filename: masterFilename,
+      duration: Math.round(targetDuration * 1000) / 1000,
+      sizeMb
+    };
   }
 
   /**
@@ -677,7 +823,7 @@ class VideoRendererService {
       }
       args.push(outputPath);
 
-      const proc = spawn('ffmpeg', args);
+      const proc = spawn('ffmpeg', args, { windowsHide: true });
       let stderr = '';
 
       const stopProgress = trackFFmpegProgress(proc, {
@@ -799,7 +945,7 @@ class VideoRendererService {
     };
 
     return new Promise((resolve, reject) => {
-      const proc = spawn('ffmpeg', args);
+      const proc = spawn('ffmpeg', args, { windowsHide: true });
       let stderr = '';
       proc.stderr.on('data', chunk => { stderr += chunk.toString(); });
 
@@ -839,7 +985,7 @@ class VideoRendererService {
               formatTerminalLog('FFMPEG:EXPORT_FALLBACK', 'Re-trying export with libx264 re-encode...');
               const fallbackArgs = ['-y', '-i', sourcePath, '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '22', '-c:a', 'aac', '-b:a', '192k', targetFilePath];
               await new Promise((res, rej) => {
-                const fbProc = spawn('ffmpeg', fallbackArgs);
+                const fbProc = spawn('ffmpeg', fallbackArgs, { windowsHide: true });
                 let fbErr = '';
                 fbProc.stderr.on('data', c => { fbErr += c.toString(); });
                 fbProc.on('close', c => (c === 0 ? res() : rej(new Error(`Fallback export failed (code ${c}): ${fbErr.slice(-200)}`))));

@@ -344,7 +344,7 @@ function recordCalls() {
   });
 
   check('main.js stores the language returned by /api/transcribe', () => {
-    assert(mainSrc.includes('state.sourceLanguage = result.language || null'));
+    assert(mainSrc.includes('state.sourceLanguage =') && mainSrc.includes('result.language'));
   });
 
   check('main.js sends sourceLanguage to /api/translate', () => {

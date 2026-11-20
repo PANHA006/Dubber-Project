@@ -1,11 +1,13 @@
 const fs = require('fs');
 const path = require('path');
+const config = require('../config');
 const { spawn } = require('child_process');
 const { formatTerminalLog, formatTerminalProgress } = require('../utils/terminal-logger');
+const { parseTimeToSeconds } = require('../utils/time');
 
 class PcmMuterService {
   constructor() {
-    this.tempDir = path.join(__dirname, '../../storage/voices');
+    this.tempDir = path.join(config.storageDir, 'voices');
     this.ensureDirs();
   }
 
@@ -137,8 +139,10 @@ class PcmMuterService {
 
     // Calculate raw padded intervals
     const rawIntervals = subtitles.map(s => {
-      const start = Math.max(0, parseFloat(s.startSec ?? s.start ?? 0) - padBefore);
-      const end = parseFloat(s.endSec ?? s.end ?? (start + 2.0)) + padAfter;
+      const rawStart = parseTimeToSeconds(s.startSec ?? s.start);
+      const rawEnd = parseTimeToSeconds(s.endSec ?? s.end);
+      const start = Math.max(0, rawStart - padBefore);
+      const end = (rawEnd > rawStart ? rawEnd : (rawStart + 2.0)) + padAfter;
       return { start, end };
     });
 
@@ -269,7 +273,7 @@ class PcmMuterService {
         tempPcmWav
       ];
 
-      const proc = spawn('ffmpeg', args);
+      const proc = spawn('ffmpeg', args, { windowsHide: true });
       let stderr = '';
       proc.stderr.on('data', chunk => { stderr += chunk.toString(); });
       proc.on('close', code => {

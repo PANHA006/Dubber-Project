@@ -18,6 +18,25 @@ function secondsToSrtTimestamp(seconds) {
 }
 
 /**
+ * Normalize human language string ("Chinese", "English", "zh-CN") to valid ISO-639-1 code required by Groq API
+ */
+function normalizeToIsoLanguage(rawLang) {
+  if (!rawLang || typeof rawLang !== 'string') return 'zh';
+  const l = rawLang.toLowerCase().trim();
+  if (l.includes('zh') || l.includes('chin')) return 'zh';
+  if (l.includes('en') || l.includes('eng')) return 'en';
+  if (l.includes('km') || l.includes('khm')) return 'km';
+  if (l.includes('yue') || l.includes('canton')) return 'yue';
+  if (l.includes('ja') || l.includes('jap')) return 'ja';
+  if (l.includes('ko') || l.includes('kor')) return 'ko';
+  if (l.includes('fr') || l.includes('fren')) return 'fr';
+  if (l.includes('th') || l.includes('thai')) return 'th';
+  if (l.includes('vi') || l.includes('viet')) return 'vi';
+  if (l.length === 2) return l;
+  return 'zh';
+}
+
+/**
  * Split word tokens by punctuation marks into coherent subtitle clauses
  */
 /**
@@ -34,14 +53,40 @@ function processRawSegments(segments = [], words = [], options = {}) {
   // Case 0: Freeze Mode (maxMergeLimit <= 1)
   // Completely bypass punctuation sub-splitting and merging to preserve 100% pure Groq Whisper native segments
   if (maxMergeLimit <= 1 && Array.isArray(segments) && segments.length > 0) {
+    let wordIdx = 0;
     return segments
       .filter(seg => (seg.text || '').trim().length > 0)
       .map(seg => {
-        const segStart = typeof seg.start === 'number' ? seg.start : 0;
-        const segEnd = typeof seg.end === 'number' ? seg.end : segStart + 1;
+        let segStart = typeof seg.start === 'number' ? seg.start : 0;
+        let segEnd = typeof seg.end === 'number' ? seg.end : segStart + 1;
+
+        // True Speech Anchor: Extract words to anchor startSec strictly to the first spoken word!
+        const segWords = [];
+        if (Array.isArray(seg.words) && seg.words.length > 0) {
+          segWords.push(...seg.words);
+        } else if (Array.isArray(words) && words.length > 0) {
+          while (wordIdx < words.length) {
+            const w = words[wordIdx];
+            if (w.start < segEnd + 0.15) {
+              segWords.push(w);
+              wordIdx++;
+            } else {
+              break;
+            }
+          }
+        }
+
+        if (segWords.length > 0 && typeof segWords[0].start === 'number') {
+          segStart = segWords[0].start;
+          const lastWord = segWords[segWords.length - 1];
+          if (typeof lastWord.end === 'number' && lastWord.end > segStart) {
+            segEnd = lastWord.end;
+          }
+        }
+
         return {
-          startSec: segStart,
-          endSec: segEnd,
+          startSec: Math.round(segStart * 1000) / 1000,
+          endSec: Math.round(segEnd * 1000) / 1000,
           text: (seg.text || '').trim()
         };
       });
@@ -61,13 +106,18 @@ function processRawSegments(segments = [], words = [], options = {}) {
 
       // Extract words that belong inside this segment
       const segWords = [];
-      while (wordIdx < words.length) {
-        const w = words[wordIdx];
-        if (w.start < segEnd + 0.15) {
-          segWords.push(w);
-          wordIdx++;
-        } else {
-          break;
+      if (Array.isArray(seg.words) && seg.words.length > 0) {
+        segWords.push(...seg.words);
+      } else {
+        while (wordIdx < words.length) {
+          const w = words[wordIdx];
+          // Strictly anchor to this segment boundary to avoid swallowing next speaker's words
+          if (w.start <= segEnd + 0.02) {
+            segWords.push(w);
+            wordIdx++;
+          } else {
+            break;
+          }
         }
       }
 
@@ -333,9 +383,9 @@ class GroqService {
     formData.append('timestamp_granularities[]', 'segment');
     formData.append('temperature', '0.0');
 
-    if (options.language && options.language !== 'auto') {
-      formData.append('language', options.language);
-    }
+    const targetLang = normalizeToIsoLanguage(options.language);
+    formData.append('language', targetLang);
+    formatTerminalLog('GROQ:CONFIG', `Configured Groq Whisper [${modelName}] with explicit ISO language: '${targetLang}' & Word-level timestamps`);
 
     const configuredKeys = groqKeyManager.getConfiguredKeys(rawApiKey);
     if (configuredKeys.length === 0) {
@@ -440,7 +490,9 @@ class GroqService {
         lang: detectedLang
       });
 
-      formatTerminalLog('GROQ:DONE', `Transcribed in ${elapsed}s (Audio Duration: ${totalDuration}s, Lang: ${detectedLang})`);
+      const wordsCount = Array.isArray(json.words) ? json.words.length : 0;
+      const segsCount = Array.isArray(json.segments) ? json.segments.length : 0;
+      formatTerminalLog('GROQ:DONE', `Transcribed in ${elapsed}s (Duration: ${totalDuration}s, Lang: ${detectedLang}, Segments: ${segsCount}, Words: ${wordsCount})`);
 
       const maxPauseGap = parseFloat(options.maxPauseGap ?? 0.20);
       const maxMergeLimit = parseInt(options.maxMergeLimit ?? 3, 10);
@@ -459,6 +511,31 @@ class GroqService {
           endSec: totalDuration,
           text: json.text.trim()
         }];
+      }
+
+      // Robust Fallback: If cloud STT anchored Segment 1 to 0.00s (e.g. leading music/intro),
+      // use local VAD to anchor Segment 1 strictly to the moment human voice actually starts!
+      if (processedSegments.length > 0 && processedSegments[0].startSec < 0.5 && effectiveAudioPath && fs.existsSync(effectiveAudioPath)) {
+        try {
+          const pyPath = process.env.PYTHON_PATH || path.resolve(__dirname, '../../.venv/Scripts/python.exe');
+          if (fs.existsSync(pyPath)) {
+            const onsetPy = `import faster_whisper; m = faster_whisper.WhisperModel('tiny', device='cpu', compute_type='int8'); segs, _ = m.transcribe(r'${effectiveAudioPath}', vad_filter=True, word_timestamps=True); s = segs.__next__(); print(s.words[0].start if s.words else s.start)`;
+            const vadCheck = spawnSync(pyPath, ['-c', onsetPy], { timeout: 10000, windowsHide: true });
+            if (vadCheck.status === 0) {
+              const detectedOnset = parseFloat(vadCheck.stdout?.toString()?.trim());
+              if (!isNaN(detectedOnset) && detectedOnset > 0.5 && detectedOnset < processedSegments[0].endSec) {
+                formatTerminalLog('GROQ:VAD_ANCHOR', `🎯 Applied Local VAD Anchor: Corrected Segment 1 start from ${processedSegments[0].startSec}s -> ${detectedOnset.toFixed(2)}s`);
+                processedSegments[0].startSec = Math.round(detectedOnset * 1000) / 1000;
+              }
+            }
+          }
+        } catch (vadErr) {
+          // Non-blocking fallback
+        }
+      }
+
+      if (processedSegments.length > 0) {
+        formatTerminalLog('GROQ:ANCHOR', `Speech Anchor: Segment 1 starts at ${secondsToSrtTimestamp(processedSegments[0].startSec)} (${processedSegments[0].startSec}s) [Text: "${processedSegments[0].text}"]`);
       }
 
       // Format into project standard subtitle schema

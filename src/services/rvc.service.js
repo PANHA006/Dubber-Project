@@ -6,10 +6,10 @@ const { formatTerminalLog } = require('../utils/terminal-logger');
 
 class RVCService {
   constructor() {
-    this.modelsDir = path.join(__dirname, '../../storage/rvc_models');
+    this.modelsDir = path.join(config.storageDir, 'rvc_models');
     this.metadataFile = path.join(this.modelsDir, 'models.json');
-    this.tempDir = path.join(__dirname, '../../storage/temp');
-    this.workerPath = path.join(__dirname, '../workers/rvc_worker.py');
+    this.tempDir = path.join(config.storageDir, 'temp');
+    this.workerPath = path.join(__dirname, '../workers/rvc_worker.py').replace('app.asar', 'app.asar.unpacked');
     this.ensureDirs();
   }
 
@@ -184,7 +184,8 @@ class RVCService {
       const child = spawn(pythonExe, [this.workerPath, tempPayloadFile], {
         cwd: path.join(__dirname, '../..'),
         env: { ...process.env, PYTHONIOENCODING: 'utf-8' },
-        stdio: ['ignore', 'pipe', 'pipe']
+        stdio: ['ignore', 'pipe', 'pipe'],
+        windowsHide: true
       });
 
       let stdout = '';

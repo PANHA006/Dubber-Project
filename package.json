@@ -2,11 +2,14 @@
   "name": "dubber-project",
   "version": "1.0.0",
   "description": "Professional Dubber Project with Express, Tailwind CSS, and Vanilla JS",
-  "main": "src/server.js",
+  "main": "electron/main.js",
   "scripts": {
     "start": "node src/server.js",
-    "dev": "nodemon",
-    "dev:all": "npx concurrently -k -i --hide 1 \"npm run dev\" \"npm run watch:css\"",
+    "app": "electron .",
+    "dist": "electron-builder --win nsis",
+    "dist:dir": "electron-builder --dir",
+    "dev": "nodemon src/server.js",
+    "dev:all": "concurrently -k -i --hide 1 \"npm run dev\" \"npm run watch:css\"",
     "setup:hooks": "git config core.hooksPath .githooks",
     "build:css": "npx @tailwindcss/cli -i ./public/css/input.css -o ./public/css/output.css --minify",
     "watch:css": "npx @tailwindcss/cli -i ./public/css/input.css -o ./public/css/output.css --watch",
@@ -41,8 +44,13 @@
   "devDependencies": {
     "@tailwindcss/cli": "^4.3.3",
     "autoprefixer": "^10.6.0",
+    "concurrently": "^10.0.7",
+    "cross-env": "^10.1.0",
+    "electron": "^45.4.1",
+    "electron-builder": "^26.18.0",
     "nodemon": "^3.1.14",
     "postcss": "^8.5.28",
-    "tailwindcss": "^4.3.3"
+    "tailwindcss": "^4.3.3",
+    "wait-on": "^9.5.1"
   }
 }

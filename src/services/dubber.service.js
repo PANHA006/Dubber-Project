@@ -15,8 +15,6 @@ class DubberService {
     const hasGroqKey = Boolean(groqKeyManager.getConfiguredKeys().length > 0);
     const rawDeepgram = (process.env.DEEPGRAM_API_KEY || '').trim();
     const hasDeepgramKey = Boolean(rawDeepgram && rawDeepgram.length > 5);
-    const rawHf = (process.env.HF_TOKEN || '').trim();
-    const hasHfToken = Boolean(rawHf && rawHf.length > 5);
 
     return {
       status: 'operational',
@@ -29,7 +27,6 @@ class DubberService {
       hasGroqKey,
       hasGeminiKey,
       hasDeepgramKey,
-      hasHfToken,
       hasLocalWhisper: true,
     };
   }

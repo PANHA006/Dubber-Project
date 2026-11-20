@@ -6,9 +6,54 @@ const deepgramService = require('../services/deepgram.service');
 const ttsService = require('../services/tts.service');
 const rvcService = require('../services/rvc.service');
 const videoRendererService = require('../services/video-renderer.service');
-const aiAudioSeparatorService = require('../services/ai-audio-separator.service');
 const historyService = require('../services/history.service');
+const systemUpdaterService = require('../services/system-updater.service');
 const { formatTerminalLog, formatTerminalProgress } = require('../utils/terminal-logger');
+const { spawn } = require('child_process');
+const path = require('path');
+const fs = require('fs');
+const config = require('../config');
+
+/**
+ * Server-Side FFmpeg CFR Audio Extractor
+ * Extracts 16kHz mono 16-bit PCM WAV with presentation timestamp synchronization:
+ * `-af aresample=async=1:first_pts=0`
+ * Guarantees zero cumulative drift across hours of concatenated / VFR video.
+ */
+function extractAudioCfr(videoPath, outputPath) {
+  return new Promise((resolve, reject) => {
+    if (Array.isArray(config.ffmpegBinDirs)) {
+      for (const ffmpegDir of config.ffmpegBinDirs) {
+        if (!process.env.PATH.includes(ffmpegDir)) {
+          process.env.PATH = `${ffmpegDir};${process.env.PATH}`;
+        }
+      }
+    }
+
+    const args = [
+      '-y',
+      '-i', videoPath,
+      '-vn',
+      '-acodec', 'pcm_s16le',
+      '-ar', '16000',
+      '-ac', '1',
+      '-af', 'aresample=async=1:first_pts=0',
+      outputPath
+    ];
+
+    const proc = spawn('ffmpeg', args, { windowsHide: true });
+    let stderr = '';
+    proc.stderr.on('data', d => { stderr += d.toString(); });
+    proc.on('close', code => {
+      if (code === 0 && fs.existsSync(outputPath)) {
+        resolve(outputPath);
+      } else {
+        reject(new Error(`FFmpeg CFR audio extraction failed (code ${code}): ${stderr.slice(-300)}`));
+      }
+    });
+    proc.on('error', err => reject(err));
+  });
+}
 
 /**
  * Controller for Dubber API endpoints
@@ -58,23 +103,73 @@ class DubberController {
   }
 
   /**
-   * Transcribe audio to subtitle JSON using Faster-Whisper
+   * Transcribe audio/video to subtitle JSON using Faster-Whisper or Groq Cloud Whisper.
+   * Features Server-Side FFmpeg CFR Audio Extraction (-af aresample=async=1:first_pts=0)
+   * to guarantee zero drift between video frames and subtitles on merged/VFR videos.
    */
   async transcribe(req, res, next) {
+    let effectiveAudioPath = null;
+    let isTempFile = false;
+    let originalFilename = '';
+
     try {
-      if (!req.file) {
-        return res.status(400).json({
-          success: false,
-          message: 'មិនមានឯកសារសំឡេង (Audio file) ត្រូវបានផ្ញើមកទេ',
-        });
+      const reqFile = req.file || (req.files && (req.files.audio?.[0] || req.files.video?.[0])) || null;
+      if (reqFile && !req.file) req.file = reqFile;
+
+      let videoPath = null;
+      if (req.body?.videoUrl) {
+        const vUrl = String(req.body.videoUrl).trim();
+        const candidates = [
+          path.join(config.storageDir, 'videos', path.basename(vUrl)),
+          path.join(config.storageDir, vUrl.replace(/^\/?storage\//, '')),
+          path.join(__dirname, '../../public', vUrl.replace(/^\//, '')),
+          path.resolve(vUrl)
+        ];
+        for (const c of candidates) {
+          if (fs.existsSync(c)) {
+            videoPath = c;
+            break;
+          }
+        }
+      } else if (reqFile) {
+        const isVideo = (reqFile.mimetype && reqFile.mimetype.startsWith('video/')) ||
+          ['.mp4', '.mkv', '.mov', '.avi', '.webm', '.flv', '.ts'].includes(path.extname(reqFile.originalname || '').toLowerCase());
+        if (isVideo) {
+          videoPath = reqFile.path;
+        }
       }
 
-      const fileSizeMb = (req.file.size / (1024 * 1024)).toFixed(2);
-      formatTerminalLog('SERVER:UPLOAD', `Received audio payload: ${req.file.originalname}`, {
-        size: `${fileSizeMb} MB`,
-        mimetype: req.file.mimetype || 'audio/wav',
-        tempPath: req.file.path
-      });
+      if (videoPath) {
+        // Server-Side FFmpeg CFR Audio Extraction (Sample-accurate PTS alignment)
+        const tempDir = path.join(config.storageDir, 'temp');
+        if (!fs.existsSync(tempDir)) fs.mkdirSync(tempDir, { recursive: true });
+        const tempWavPath = path.join(tempDir, `server_cfr_${Date.now()}_${Math.random().toString(36).substring(7)}.wav`);
+
+        formatTerminalLog('SERVER:CFR_EXTRACT', `Extracting audio from video via FFmpeg CFR (-af aresample=async=1:first_pts=0)...`, {
+          video: path.basename(videoPath),
+          output: path.basename(tempWavPath)
+        });
+
+        await extractAudioCfr(videoPath, tempWavPath);
+        effectiveAudioPath = tempWavPath;
+        originalFilename = path.basename(videoPath).replace(/\.[^/.]+$/, '') + '.wav';
+        isTempFile = true;
+      } else if (reqFile) {
+        effectiveAudioPath = reqFile.path;
+        originalFilename = reqFile.originalname;
+        isTempFile = true;
+        const fileSizeMb = (reqFile.size / (1024 * 1024)).toFixed(2);
+        formatTerminalLog('SERVER:UPLOAD', `Received audio payload: ${reqFile.originalname}`, {
+          size: `${fileSizeMb} MB`,
+          mimetype: reqFile.mimetype || 'audio/wav',
+          tempPath: reqFile.path
+        });
+      } else {
+        return res.status(400).json({
+          success: false,
+          message: 'មិនមានឯកសារសំឡេង ឬវីដេអូ (Audio/Video file or videoUrl) ត្រូវបានផ្ញើមកទេ',
+        });
+      }
 
       const model = req.body?.model || process.env.WHISPER_MODEL || 'groq-whisper-large-v3';
       const isGroq = typeof model === 'string' && (model.startsWith('groq') || model.includes('groq'));
@@ -103,14 +198,14 @@ class DubberController {
         // Route to Groq Cloud Whisper API (Ultra-Fast 1-2s)
         const groqApiKey = req.body?.groqApiKey || req.body?.apiKey || process.env.GROQ_API_KEY;
         formatTerminalLog('SERVER:ROUTE', `Routing transcription to Groq Cloud API (model: ${model})`);
-        const groqResult = await groqService.transcribeAudio(req.file.path, {
+        const groqResult = await groqService.transcribeAudio(effectiveAudioPath, {
           model,
           apiKey: groqApiKey,
-          originalFilename: req.file.originalname,
+          originalFilename,
           vadThreshold: req.body?.vadThreshold,
           maxPauseGap: req.body?.maxPauseGap,
           maxMergeLimit: req.body?.maxMergeLimit,
-          language: req.body?.language || null
+          language: req.body?.language || 'zh'
         });
         subtitles = Array.isArray(groqResult) ? groqResult : (groqResult.segments || []);
         detectedLanguage = Array.isArray(groqResult) ? null : (groqResult.language || null);
@@ -118,20 +213,20 @@ class DubberController {
         formatTerminalLog('SERVER:RESULT', `Successfully processed transcription with Groq Cloud [${model}]`, {
           engine: 'groq',
           subtitlesCount: subtitles.length,
-          file: req.file.originalname
+          file: originalFilename
         });
       } else if (isDeepgram) {
         // Route to Deepgram Commercial Specialist API
         const deepgramApiKey = req.body?.deepgramApiKey || req.body?.apiKey || process.env.DEEPGRAM_API_KEY;
         formatTerminalLog('SERVER:ROUTE', `Routing transcription to Deepgram API (model: ${model})`);
-        const dgResult = await deepgramService.transcribeAudio(req.file.path, {
+        const dgResult = await deepgramService.transcribeAudio(effectiveAudioPath, {
           model,
           apiKey: deepgramApiKey,
-          originalFilename: req.file.originalname,
+          originalFilename,
           vadThreshold: req.body?.vadThreshold,
           maxPauseGap: req.body?.maxPauseGap,
           maxMergeLimit: req.body?.maxMergeLimit,
-          language: req.body?.language || null
+          language: req.body?.language || 'zh'
         });
         subtitles = Array.isArray(dgResult) ? dgResult : (dgResult.segments || []);
         detectedLanguage = Array.isArray(dgResult) ? null : (dgResult.language || null);
@@ -139,7 +234,7 @@ class DubberController {
         formatTerminalLog('SERVER:RESULT', `Successfully processed transcription with Deepgram [${model}]`, {
           engine: 'deepgram',
           subtitlesCount: subtitles.length,
-          file: req.file.originalname
+          file: originalFilename
         });
       } else {
         // Route to Faster-Whisper Local Engine (Offline CPU)
@@ -148,13 +243,13 @@ class DubberController {
         if (localModel === 'whisper' || !localModel) localModel = 'base';
         
         formatTerminalLog('SERVER:ROUTE', `Routing transcription to Faster-Whisper Local Engine (model: ${localModel})`);
-        const whisperResult = await whisperService.transcribeAudio(req.file.path, {
+        const whisperResult = await whisperService.transcribeAudio(effectiveAudioPath, {
           model: localModel,
           vad: req.body?.vad !== '0' && req.body?.vad !== false,
           vadThreshold: req.body?.vadThreshold,
           maxPauseGap: req.body?.maxPauseGap,
           maxMergeLimit: req.body?.maxMergeLimit,
-          language: req.body?.language || null
+          language: req.body?.language || 'zh'
         });
         subtitles = Array.isArray(whisperResult) ? whisperResult : (whisperResult.segments || []);
         detectedLanguage = Array.isArray(whisperResult) ? null : (whisperResult.language || null);
@@ -162,15 +257,9 @@ class DubberController {
         formatTerminalLog('SERVER:RESULT', `Successfully processed transcription with Faster-Whisper [${localModel}]`, {
           engine: 'faster-whisper',
           subtitlesCount: subtitles.length,
-          file: req.file.originalname
+          file: originalFilename
         });
       }
-
-      // Clean up local temp file after processing
-      const fs = require('fs');
-      fs.unlink(req.file.path, (err) => {
-        if (err) console.warn('Could not delete temp audio file:', err.message);
-      });
 
       res.status(200).json({
         success: true,
@@ -179,12 +268,19 @@ class DubberController {
       });
     } catch (error) {
       formatTerminalLog('SERVER:ERROR', `Transcription error: ${error.message}`);
-      // Ensure temp file is cleaned up even if transcription fails
-      if (req.file && req.file.path) {
-        const fs = require('fs');
-        fs.unlink(req.file.path, () => {});
-      }
       next(error);
+    } finally {
+      // Clean up temp audio file
+      if (isTempFile && effectiveAudioPath && fs.existsSync(effectiveAudioPath)) {
+        fs.unlink(effectiveAudioPath, (err) => {
+          if (err) console.warn('Could not delete temp audio file:', err.message);
+        });
+      }
+      if (req.file && req.file.path && req.file.path !== effectiveAudioPath && fs.existsSync(req.file.path)) {
+        fs.unlink(req.file.path, (err) => {
+          if (err) console.warn('Could not delete temp uploaded file:', err.message);
+        });
+      }
     }
   }
 
@@ -335,9 +431,43 @@ class DubberController {
     }
   }
 
+  /**
+   * Pre-mixes all generated voice clips into a full-timeline Master Audio track matching videoDuration
+   */
+  async assembleMasterVoice(req, res, next) {
+    try {
+      const { videoUrl, subtitles, videoDuration, dubVolume } = req.body || {};
+
+      if (!Array.isArray(subtitles) || subtitles.length === 0) {
+        return res.status(400).json({
+          success: false,
+          message: 'មិនមាន Subtitles សម្រាប់ផ្គុំ Master Audio ទេ'
+        });
+      }
+
+      formatTerminalLog('SERVER:ASSEMBLE_MASTER', `Received request to assemble Master Timeline Voice Audio (${subtitles.length} clips)...`);
+
+      const result = await videoRendererService.buildTimelineMasterAudio({
+        videoUrl,
+        subtitles,
+        videoDuration: parseFloat(videoDuration) || 0,
+        dubVolume: parseFloat(dubVolume) || 1.0
+      });
+
+      res.status(200).json({
+        success: true,
+        message: 'ផ្គុំ Master Timeline Audio ជោគជ័យ!',
+        data: result
+      });
+    } catch (error) {
+      formatTerminalLog('SERVER:ASSEMBLE_MASTER_ERR', `Assemble master error: ${error.message}`);
+      next(error);
+    }
+  }
+
   async generateDubbedVideo(req, res, next) {
     try {
-      const { videoUrl, subtitles, settings } = req.body || {};
+      const { videoUrl, subtitles, settings, masterAudioUrl } = req.body || {};
 
       if (!videoUrl) {
         return res.status(400).json({
@@ -355,10 +485,16 @@ class DubberController {
 
       formatTerminalLog('SERVER:DUB_VIDEO', `Received dubbed video render request for ${videoUrl} with ${subtitles.length} subtitles`);
 
+      const mergedSettings = {
+        ...(settings || {}),
+        masterAudioUrl: settings?.masterAudioUrl || masterAudioUrl || null
+      };
+
       const result = await videoRendererService.renderDubbedVideo({
         videoUrl,
         subtitles,
-        settings: settings || {}
+        settings: mergedSettings,
+        masterAudioUrl: mergedSettings.masterAudioUrl
       });
 
       res.status(200).json({
@@ -443,17 +579,6 @@ class DubberController {
 
       formatTerminalLog('SERVER:VIDEO_UPLOAD', `Persisted video "${originalName}" (${sizeMb} MB) to ${videoUrl}`);
 
-      // High-Speed Pre-Separation: Warm up BGM isolation cache asynchronously in background
-      try {
-        const fullVideoPath = req.file.path;
-        aiAudioSeparatorService.extractAndIsolateBgm({
-          videoPath: fullVideoPath,
-          settings: { bgVolume: 8 }
-        }).catch(err => {
-          formatTerminalLog('AI:PRE_SEPARATION_INFO', `Background pre-separation info: ${err.message}`);
-        });
-      } catch (_) {}
-
       res.status(200).json({
         success: true,
         message: 'វីដេអូត្រូវបានរក្សាទុកលើ Server ដោយជោគជ័យ',
@@ -478,7 +603,7 @@ class DubberController {
     try {
       const fs = require('fs');
       const path = require('path');
-      const projectPath = path.join(__dirname, '../../storage/projects/autosave_project.json');
+      const projectPath = path.join(config.storageDir, 'projects', 'autosave_project.json');
 
       if (!fs.existsSync(projectPath)) {
         return res.status(200).json({
@@ -509,7 +634,7 @@ class DubberController {
     try {
       const fs = require('fs');
       const path = require('path');
-      const projectDir = path.join(__dirname, '../../storage/projects');
+      const projectDir = path.join(config.storageDir, 'projects');
       if (!fs.existsSync(projectDir)) {
         fs.mkdirSync(projectDir, { recursive: true });
       }
@@ -603,10 +728,11 @@ class DubberController {
    */
   async clearAllHistory(req, res, next) {
     try {
-      const result = historyService.clearAllHistory();
+      const options = req.body || {};
+      const result = historyService.clearAllHistory(options);
       res.status(200).json({
         success: true,
-        message: 'បានសម្អាតប្រវត្តិវីដេអូទាំងអស់ជោគជ័យ',
+        message: 'បានសម្អាតទិន្នន័យ និង Cache ទាំងអស់ជោគជ័យ',
         data: result
       });
     } catch (error) {
@@ -738,6 +864,53 @@ class DubberController {
       });
     } catch (error) {
       formatTerminalLog('SERVER:RVC_TEST_ERR', error.message);
+      next(error);
+    }
+  }
+
+  /**
+   * Get system dependencies & updates status (FFmpeg, Python, edge-tts, faster-whisper, etc.)
+   */
+  async getSystemDependencies(req, res, next) {
+    try {
+      const forceRefresh = req.query.force === 'true';
+      const status = await systemUpdaterService.getDependenciesStatus(forceRefresh);
+      res.status(200).json({
+        success: true,
+        data: status
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * Update a specific Python package in .venv via pip
+   */
+  async updateSystemPackage(req, res, next) {
+    try {
+      const { package: pkgName } = req.body || {};
+      if (!pkgName) {
+        return res.status(400).json({
+          success: false,
+          message: 'សូមបញ្ជាក់ឈ្មោះកញ្ចប់ដែលត្រូវអាប់ដេត (Package name required)'
+        });
+      }
+      const result = await systemUpdaterService.updatePythonPackage(pkgName);
+      res.status(200).json(result);
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * 1-Click Update for all core AI engines (edge-tts + faster-whisper)
+   */
+  async updateAllAiEngines(req, res, next) {
+    try {
+      const result = await systemUpdaterService.updateAllAiEngines();
+      res.status(200).json(result);
+    } catch (error) {
       next(error);
     }
   }

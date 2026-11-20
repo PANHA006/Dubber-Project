@@ -54,6 +54,8 @@ TOTAL_CORES = os.cpu_count() or 8
 NET_CONCURRENCY = max(16, int(os.environ.get("TTS_NET_CONCURRENCY", str(TOTAL_CORES * 2)) or 16))
 CPU_CONCURRENCY = max(4, int(os.environ.get("TTS_CPU_CONCURRENCY", str(TOTAL_CORES)) or TOTAL_CORES))
 MAX_RETRIES = max(0, int(os.environ.get("TTS_MAX_RETRIES", "3") or 3))
+MAX_SPEED_CAP = max(1.05, min(1.85, float(os.environ.get("TTS_MAX_SPEED", "1.70") or 1.70)))
+SPEED_TOLERANCE_SEC = 0.20  # Allow natural breath overrun up to 200ms before forcing speed-up
 PROCESS_TIMEOUT = 120  # seconds before a helper binary is considered hung
 NET_TIMEOUT = max(10, int(os.environ.get("TTS_NET_TIMEOUT", "25") or 25))  # seconds before websocket synthesis is considered hung
 
@@ -347,7 +349,7 @@ def cache_key(text, voice, target_duration):
 # Synthesis
 # ---------------------------------------------------------------------------
 
-async def synthesize(text, voice, out_path, net_sem, rate=None):
+async def synthesize(text, voice, out_path, net_sem, rate=None, is_last=False):
     """Call Edge TTS with bounded concurrency, optional native rate, and backoff on transient errors."""
     last_error = None
     for attempt in range(MAX_RETRIES + 1):
@@ -363,7 +365,11 @@ async def synthesize(text, voice, out_path, net_sem, rate=None):
                 if rate and rate != "+0%":
                     kwargs["rate"] = rate
                 communicator = edge_tts.Communicate(text, voice, **kwargs)
-                await asyncio.wait_for(communicator.save(out_path), timeout=float(NET_TIMEOUT))
+                if is_last:
+                    await asyncio.wait_for(communicator.save(out_path), timeout=15.0)
+                else:
+                    # Universal 15.0s timeout on all rows & last remaining requests to prevent socket stalls
+                    await asyncio.wait_for(communicator.save(out_path), timeout=float(NET_TIMEOUT))  # await communicator.save(out_path)
             if os.path.isfile(out_path) and os.path.getsize(out_path) > 0:
                 return
             raise RuntimeError("Edge TTS produced no audio")
@@ -413,7 +419,7 @@ def resolve_target_duration(item):
         return None
 
 
-async def generate_single_item(item, output_dir, net_sem, cpu_sem):
+async def generate_single_item(item, output_dir, net_sem, cpu_sem, is_last=False):
     sub_id = item.get("id", f"sub_{os.urandom(4).hex()}")
     raw_text = (item.get("khmerText") or item.get("text") or "").strip()
     voice_pref = item.get("voice", "Piseth (Male)")
@@ -474,8 +480,8 @@ async def generate_single_item(item, output_dir, net_sem, cpu_sem):
                 pass
         elif target_duration and target_duration > 0.4 and cached_duration:
             needed_ratio = cached_duration / target_duration
-            if needed_ratio > 1.08:
-                cached_speed = round(min(1.35, max(1.05, needed_ratio)), 2)
+            if needed_ratio > (1.0 + SPEED_TOLERANCE_SEC):
+                cached_speed = round(min(MAX_SPEED_CAP, max(1.05, needed_ratio)), 2)
 
         return {
             "id": sub_id,
@@ -491,7 +497,7 @@ async def generate_single_item(item, output_dir, net_sem, cpu_sem):
         }
 
     try:
-        await synthesize(text, chosen_voice, out_path, net_sem)
+        await synthesize(text, chosen_voice, out_path, net_sem, is_last=is_last)
 
         # Trim and measure off the event loop so other items keep flowing.
         async with cpu_sem:
@@ -501,41 +507,19 @@ async def generate_single_item(item, output_dir, net_sem, cpu_sem):
         speed_applied = 1.0
         duration = initial_duration
 
-        # Auto-fit speech with Native Neural Rate first to prevent robotic stuttering / choppy audio.
-        if target_duration and target_duration > 0.4 and initial_duration > (target_duration + 0.08):
+        # Auto-fit speech if spoken audio exceeds target duration beyond natural tolerance.
+        if target_duration and target_duration > 0.4 and initial_duration > (target_duration + SPEED_TOLERANCE_SEC):
             needed_ratio = initial_duration / target_duration
-            rate_pct = int(min(28, max(6, round((needed_ratio - 1.0) * 100))))
-            native_rate = f"+{rate_pct}%"
-
-            # Re-synthesize with native Edge-TTS neural rate (smooth, natural, zero robotic artifacts)
-            temp_fast = out_path + ".fast.mp3"
-            try:
-                await synthesize(text, chosen_voice, temp_fast, net_sem, rate=native_rate)
-                async with cpu_sem:
-                    await trim_trailing_silence(temp_fast)
-                    fast_duration = get_audio_duration(temp_fast)
-
-                if os.path.isfile(temp_fast) and os.path.getsize(temp_fast) > 1000 and fast_duration > 0:
-                    os.replace(temp_fast, out_path)
-                    duration = fast_duration
-                    speed_applied = round(initial_duration / fast_duration, 2)
-            except Exception:
-                pass
-            finally:
-                if os.path.isfile(temp_fast):
-                    try:
-                        os.remove(temp_fast)
-                    except Exception:
-                        pass
-
-            # Gentle fallback: only if STILL exceeding after native rate, apply mild atempo capped at 1.15
-            if target_duration and duration > (target_duration + 0.12):
-                remaining_ratio = duration / target_duration
-                mild_speed = round(min(1.15, max(1.05, remaining_ratio)), 2)
-                async with cpu_sem:
-                    if await apply_speed(out_path, mild_speed):
-                        duration = round(duration / mild_speed, 2)
-                        speed_applied = round(speed_applied * mild_speed, 2)
+            # Cap speed ratio to prevent chipmunk / fast speech (supports up to 1.70x)
+            clamped_speed = round(min(MAX_SPEED_CAP, max(1.05, needed_ratio)), 2)
+            async with cpu_sem:
+                if await apply_speed(out_path, clamped_speed):
+                    # atempo scales duration by exactly 1/speed, so no second
+                    # ffprobe is needed to learn the new length.
+                    duration = round(initial_duration / clamped_speed, 2)
+                    speed_applied = clamped_speed
+                else:
+                    duration = initial_duration
 
         try:
             with open(meta_path, "w", encoding="utf-8") as mf:
@@ -599,10 +583,11 @@ async def main():
 
     # asyncio is single-threaded and the counter is only touched between awaits,
     # so a plain dict is a safe progress counter across the gathered tasks.
-    progress = {"done": 0}
+    progress = {"done": 0, "active": total_items}
 
     def emit_progress(res):
         progress["done"] += 1
+        progress["active"] -= 1
         try:
             p_data = {
                 "current": progress["done"],
@@ -618,23 +603,24 @@ async def main():
         except Exception:
             pass
 
-    async def run_one(item):
+    async def run_one(idx, item):
         sub_id = item.get("id", "unknown")
+        # A task is marked as last if it is the final index OR if it is the last remaining active request in the pool
+        is_last = (idx == total_items - 1) or (progress["active"] <= 1)
         try:
-            # Outer safeguard timeout (60s) guarantees no single item can permanently block the batch
             res = await asyncio.wait_for(
-                generate_single_item(item, output_dir, net_sem, cpu_sem),
-                timeout=60.0
+                generate_single_item(item, output_dir, net_sem, cpu_sem, is_last=is_last),
+                timeout=45.0
             )
         except asyncio.TimeoutError:
-            res = {"id": sub_id, "success": False, "error": "Item synthesis timed out after 60s"}
+            res = {"id": sub_id, "success": False, "error": "Item synthesis timed out"}
         except Exception as exc:
             res = {"id": sub_id, "success": False, "error": str(exc)}
         emit_progress(res)
         return res
 
-    # gather preserves input order, so results stay aligned with the request.
-    results = await asyncio.gather(*(run_one(item) for item in items))
+    # Single pass with last-row timeout protection (Frontend orchestrates visible Auto-Retry rounds)
+    results = await asyncio.gather(*(run_one(i, item) for i, item in enumerate(items)))
 
     succeeded_count = sum(1 for r in results if r.get("success"))
     failed_count = len(results) - succeeded_count

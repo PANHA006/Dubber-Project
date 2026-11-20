@@ -48,10 +48,13 @@ def split_segments_by_punctuation(segments):
             continue
 
         current_words = []
-        for w in words:
+        for i, w in enumerate(words):
             current_words.append(w)
             w_text = w.get("word", "").strip()
-            if w_text and any(p in w_text for p in punct_marks):
+            has_punct = w_text and any(p in w_text for p in punct_marks)
+            next_w = words[i + 1] if i + 1 < len(words) else None
+            has_gap = next_w and (next_w.get("start", 0) - w.get("end", 0) >= 0.40)
+            if has_punct or has_gap:
                 row_text = "".join(item.get("word", "") for item in current_words).strip()
                 if row_text:
                     start_sec = current_words[0]["start"]
@@ -155,6 +158,7 @@ def extract_audio_if_needed(input_path):
         "-acodec", "pcm_s16le",
         "-ar", "16000",
         "-ac", "1",
+        "-af", "aresample=async=1:first_pts=0",
         temp_wav
     ]
     try:
@@ -237,10 +241,20 @@ def run_transcription(audio_path, model_size="base", device="cpu", compute_type=
 
     # Step 3: Split by punctuation or bypass for Freeze Mode (max_merge_limit <= 1)
     if int(max_merge_limit) <= 1:
-        processed_segments = [
-            {"startSec": s["start"], "endSec": s["end"], "text": s["text"]}
-            for s in raw_segments if s.get("text", "").strip()
-        ]
+        processed_segments = []
+        for s in raw_segments:
+            txt = s.get("text", "").strip()
+            if not txt:
+                continue
+            words = s.get("words", [])
+            # True Speech Anchor: Anchor startSec strictly to the first spoken word to eliminate leading silence/music!
+            start_sec = words[0]["start"] if words and "start" in words[0] else s.get("start", 0.0)
+            end_sec = words[-1]["end"] if words and "end" in words[-1] else s.get("end", start_sec + 1.0)
+            processed_segments.append({
+                "startSec": round(start_sec, 3),
+                "endSec": round(end_sec, 3),
+                "text": txt
+            })
     else:
         processed_segments = split_segments_by_punctuation(raw_segments)
         # Step 4: Merge adjacent segments respecting max_pause_gap and max_merge_limit

@@ -20,13 +20,13 @@ app.use(express.urlencoded({ extended: true, limit: config.bodyLimit }));
 app.use(express.static(path.join(__dirname, '..', 'public')));
 
 // Serve generated voices from 'storage/voices' directory
-app.use('/storage/voices', express.static(path.join(__dirname, '..', 'storage', 'voices')));
+app.use('/storage/voices', express.static(path.join(config.storageDir, 'voices')));
 
 // Serve persistent videos from 'storage/videos' directory
-app.use('/storage/videos', express.static(path.join(__dirname, '..', 'storage', 'videos')));
+app.use('/storage/videos', express.static(path.join(config.storageDir, 'videos')));
 
 // Serve exported videos from 'storage/exports' directory
-app.use('/storage/exports', express.static(path.join(__dirname, '..', 'storage', 'exports')));
+app.use('/storage/exports', express.static(path.join(config.storageDir, 'exports')));
 
 // API Routes
 app.use('/api', apiRoutes);

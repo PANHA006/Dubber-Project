@@ -10,7 +10,8 @@
 - 🌐 **ការបកប្រែជាភាសាខ្មែរបែបភាពយន្ត (2-Step Cinema Translation):** ប្រើ Google Gemini Flash (`GEMINI_TRANSLATION_MODEL`, លំនាំដើម `gemini-3.5-flash-lite`) តាមក្បួនបកប្រែ ២ ជំហាន (EN Context -> Spoken Cinema Khmer) ដោយជៀសវាងការប្រើពាក្យខុសបែបសៀវភៅ ឬពាក្យ Hallucination។
 - 🔑 **ប្រព័ន្ធ Multi-Key Failover Pool:** គ្រប់គ្រង API Keys ច្រើនក្នុងពេលតែមួយ មានមុខងារ Auto-Rotation, Cooldown និងចាក់សោស្វ័យប្រវត្ត 24h នៅពេលអស់ Quota។
 - 🗣️ **សំឡេងខ្មែរ AI ធម្មជាតិ (Edge-TTS Neural Voices):** គាំទ្រសំឡេងខ្មែរ Neural (Piseth & Sreymom) ជាមួយនឹងការកំណត់ Pitch, Speed និង Volume។
-- 🎛️ **Audio Ducking & Auto Speed Fitting:** បន្ថយសំឡេងដើមនៃវីដេអូនៅពេលមានសំឡេងនិយាយ និងតម្រឹមល្បឿនសំឡេង (`atempo`) ឱ្យស៊ីចង្វាក់ជាមួយ Timestamp។
+- 🎛️ **Audio Ducking & Lip-sync Auto Speed Fitting:** បន្ថយសំឡេងដើមនៃវីដេអូនៅពេលមានសំឡេងនិយាយ និងតម្រឹមល្បឿនសំឡេង (`atempo`) ដោយមាន Breath Tolerance (+0.20s) និង Speed Cap (1.25x) ការពារកុំឱ្យនិយាយញាប់ខុសធម្មជាតិ។
+- ⏱️ **True Timestamp Synchronization:** ធានាសំឡេងខ្មែរចាប់ផ្តើមនិយាយចំពេល (No Pre-speech offset) និងផ្គុំសំឡេងតាមលំដាប់លំដោយពេលវេលាសុក្រឹត ១០០% (`adelay:all=1`)។
 - 🖥️ **Interactive Subtitle Editor (Human-in-the-Loop):** ផ្ទាំង UI ងាយស្រួលកែសម្រួលអក្សរខ្មែរ និង Timestamp ផ្ទាល់លើ Web Player។
 - 🔄 **Video Preview & Switcher:** ចុចប្តូរមើលរវាង Original Video និង Dubbed Video ភ្លាមៗដោយមិនបាច់ Reload។
 - 💾 **Project Persistence & Auto-Save:** រក្សាទុកស្ថានភាព Subtitles, Key API និង Video ដោយស្វ័យប្រវត្តិ ព្រមទាំងអាច Export/Import ជា JSON បាន។
@@ -74,9 +75,10 @@ Dubber Project/
 │   │   ├── video-renderer.service.js # FFmpeg mixer, ducking & muxer
 │   │   └── whisper.service.js      # Faster-Whisper offline worker runner
 │   ├── utils/
-│   │   └── terminal-logger.js # CLI terminal log formatter
+│   │   ├── terminal-logger.js # CLI terminal log formatter
+│   │   └── time.js            # Timestamp parser (SRT, timecodes, seconds)
 │   └── workers/               # Python AI Workers
-│       ├── tts_worker.py          # Microsoft Edge TTS script
+│       ├── tts_worker.py          # Microsoft Edge TTS script (Speed Cap & Breath Tolerance)
 │       └── whisper_transcriber.py # Faster-Whisper Speech-to-Text script
 │
 ├── public/                    # Frontend Static Files
@@ -94,8 +96,7 @@ Dubber Project/
 │       └── logger.js          # Client-to-terminal logger
 │
 ├── scripts/                   # Helper Scripts
-│   ├── translate_khmer_subtitles.js
-│   └── update-subtitles.js
+│   └── translate_khmer_subtitles.js
 │
 ├── storage/                   # Media & State Storage (Media files ត្រូវ ignore ក្នុង Git)
 │   ├── exports/               # វីដេអូនាំចេញចុងក្រោយ (.mp4)
@@ -103,10 +104,11 @@ Dubber Project/
 │   ├── projects/              # ឯកសារ Auto-save (.json)
 │   ├── temp/                  # ឯកសារសំឡេងបណ្តោះអាសន្ន
 │   ├── videos/                # វីដេអូដែលបាន Upload ចូល
-│   └── voices/                # សំឡេងកាត់ជាកង់ៗដោយ TTS (.mp3)
+│   └── voices/                # សំឡេងកាត់ជាកង់ៗដោយ TTS (.mp3 & .meta.json)
 │
 └── tests/                     # Test Suites (30+ automated tests)
     ├── e2e-api.test.js        # Full End-to-End API test suite
+    ├── timing-and-sync-fixes.test.js # Timestamp parsing & audio sync verification
     ├── full-pipeline.test.js  # Pipeline test
     ├── key-manager.test.js    # Gemini multi-key pool test
     └── regression-body-limit.test.js
@@ -264,6 +266,9 @@ npm test
 
 # ឬបើប្រើ cmd លើ Windows
 cmd /c npm test
+
+# តេស្តផ្ទៀងផ្ទាត់ Timestamp & Audio Sync Precision
+node tests/timing-and-sync-fixes.test.js
 
 # តេស្តសមត្ថភាពផ្ទុកទិន្នន័យ Upload Limit
 npm run test:regression
