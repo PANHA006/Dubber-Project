@@ -17,8 +17,8 @@
   ],
   "extraResources": [
     {
-      "from": ".venv",
-      "to": ".venv",
+      "from": "python-runtime",
+      "to": "python-runtime",
       "filter": [
         "**/*",
         "!**/__pycache__/**"

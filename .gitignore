@@ -11,6 +11,8 @@ package-lock.json.bak
 venv/
 env/
 ENV/
+python-runtime/**
+!python-runtime/.gitkeep
 __pycache__/
 *.py[cod]
 *$py.class

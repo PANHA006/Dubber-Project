@@ -26,26 +26,39 @@ function firstExistingPath(candidates) {
 /**
  * Resolve the Python interpreter used by the Faster-Whisper and Edge-TTS workers.
  * Priority:
- *   1. PYTHON_PATH from .env (when the file actually exists)
- *   2. A project-local virtualenv (./.venv)
- *   3. The global "python" executable on PATH
+ *   1. PYTHON_PATH from .env (when explicitly provided and file exists)
+ *   2. Packaged Electron extraResources portable runtime (highest priority for installed desktop app)
+ *   3. Project-local portable python runtime (./python-runtime)
+ *   4. Project-local virtualenv (./.venv)
+ *   5. Standard Windows Python installations (bypasses broken Windows Store alias / Code 103)
+ *   6. Global "python" executable on PATH
  */
 function resolvePythonPath() {
   const fromEnv = firstExistingPath([process.env.PYTHON_PATH]);
   if (fromEnv) return fromEnv;
 
-  // When bundled as an Electron desktop app, extraResources live in process.resourcesPath
+  // 1. When bundled as an Electron desktop app, extraResources live in process.resourcesPath
   const resourcesDir = process.resourcesPath;
   if (resourcesDir) {
-    const packagedVenv = firstExistingPath([
-      path.join(resourcesDir, '.venv', 'Scripts', 'python.exe'),
-      path.join(resourcesDir, '.venv', 'Scripts', 'python3.exe'),
+    const packagedRuntime = firstExistingPath([
+      path.join(resourcesDir, 'python-runtime', 'python.exe'),
+      path.join(resourcesDir, 'python-runtime', 'Scripts', 'python.exe'),
       path.join(resourcesDir, 'python', 'python.exe'),
       path.join(resourcesDir, 'python', 'Scripts', 'python.exe'),
+      path.join(resourcesDir, '.venv', 'Scripts', 'python.exe'),
+      path.join(resourcesDir, '.venv', 'Scripts', 'python3.exe'),
     ]);
-    if (packagedVenv) return packagedVenv;
+    if (packagedRuntime) return packagedRuntime;
   }
 
+  // 2. Project-local portable python runtime (100% self-contained, zero hardcoded user paths)
+  const projectPortableRuntime = firstExistingPath([
+    path.join(repoRoot, 'python-runtime', 'python.exe'),
+    path.join(repoRoot, 'python-runtime', 'Scripts', 'python.exe'),
+  ]);
+  if (projectPortableRuntime) return projectPortableRuntime;
+
+  // 3. Project-local virtualenv (development fallback)
   const localVenv = firstExistingPath([
     path.join(repoRoot, '.venv', 'Scripts', 'python.exe'),
     path.join(repoRoot, '.venv', 'Scripts', 'python3.exe'),
@@ -53,6 +66,28 @@ function resolvePythonPath() {
     path.join(repoRoot, '.venv', 'bin', 'python'),
   ]);
   if (localVenv) return localVenv;
+
+  // 4. Standard Windows Python installations (prevents Windows Store stub error code 103)
+  const standardWindowsPaths = [];
+  const localAppData = process.env.LOCALAPPDATA;
+  const programFiles = process.env.ProgramFiles;
+  const programFilesX86 = process.env['ProgramFiles(x86)'];
+
+  ['Python312', 'Python311', 'Python310', 'Python313', 'Python314'].forEach((ver) => {
+    if (localAppData) {
+      standardWindowsPaths.push(path.join(localAppData, 'Programs', 'Python', ver, 'python.exe'));
+    }
+    if (programFiles) {
+      standardWindowsPaths.push(path.join(programFiles, 'Python', ver, 'python.exe'));
+      standardWindowsPaths.push(path.join(programFiles, ver, 'python.exe'));
+    }
+    if (programFilesX86) {
+      standardWindowsPaths.push(path.join(programFilesX86, 'Python', ver, 'python.exe'));
+    }
+  });
+
+  const discoveredStandardPython = firstExistingPath(standardWindowsPaths);
+  if (discoveredStandardPython) return discoveredStandardPython;
 
   return 'python';
 }
@@ -79,6 +114,11 @@ function resolveFfmpegBinDirs(pythonExecutable) {
     const venvRoot = path.dirname(path.dirname(pythonExecutable));
     dirs.push(path.join(venvRoot, 'Lib', 'site-packages', 'imageio_ffmpeg', 'binaries'));
     dirs.push(path.join(venvRoot, 'lib', 'site-packages', 'imageio_ffmpeg', 'binaries'));
+
+    // <python-runtime>/python.exe -> <python-runtime>/Lib/site-packages/imageio_ffmpeg/binaries
+    const runtimeRoot = path.dirname(pythonExecutable);
+    dirs.push(path.join(runtimeRoot, 'Lib', 'site-packages', 'imageio_ffmpeg', 'binaries'));
+    dirs.push(path.join(runtimeRoot, 'site-packages', 'imageio_ffmpeg', 'binaries'));
   }
 
   return dirs.filter((dir) => firstExistingPath([dir]) !== null);
