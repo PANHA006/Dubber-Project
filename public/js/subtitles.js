@@ -231,7 +231,7 @@ function renderSpeedBadge(speed) {
   if (sp <= 1.50) {
     return `<span class="shrink-0 text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-300 border border-amber-500/35 whitespace-nowrap shadow-sm shadow-amber-500/10 select-none" title="Auto-Speed (លឿន): បានបង្កើនល្បឿន ${sp}x ដើម្បីតម្រូវតាមពេលវេលា Start/End">⚡${sp}x</span>`;
   }
-  return `<span class="shrink-0 text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-orange-500/20 text-orange-300 border border-orange-500/40 whitespace-nowrap shadow-sm shadow-orange-500/15 select-none" title="Auto-Speed (លឿនអតិបរមា 1.7x): បានបង្កើនល្បឿន ${sp}x ដើម្បីតម្រូវតាមពេលវេលា Start/End">⚡${sp}x</span>`;
+  return `<span class="shrink-0 text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-orange-500/20 text-orange-300 border border-orange-500/40 whitespace-nowrap shadow-sm shadow-orange-500/15 select-none" title="Auto-Speed (លឿនអតិបរមា 1.85x): បានបង្កើនល្បឿន ${sp}x ដើម្បីតម្រូវតាមពេលវេលា Start/End">⚡${sp}x</span>`;
 }
 
 export function createSubtitleRowElement(sub, idx) {
