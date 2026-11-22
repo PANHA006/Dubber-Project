@@ -589,7 +589,7 @@ async function executeVoiceGeneration(itemsToProcess, mode = 'all') {
   const speedBadge = document.getElementById('tts-speed-badge');
   const statusText = document.getElementById('tts-status-text');
 
-  const MAX_AUTO_RETRIES = 5; // Up to 5 auto-retries for any failed lines
+  const MAX_AUTO_RETRIES = 15; // Up to 15 auto-retries for any failed lines
   let currentBatch = [...itemsToProcess];
   let attempt = 0;
 

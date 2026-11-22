@@ -52,7 +52,7 @@ async function runTests() {
 
   it('public/js/main.js displays checking banner and executes multi-round auto-retries', () => {
     const mainJs = fs.readFileSync(path.join(__dirname, '../public/js/main.js'), 'utf-8');
-    assert.ok(mainJs.includes('MAX_AUTO_RETRIES = 5'), 'Must support up to 5 auto-retries');
+    assert.ok(mainJs.includes('MAX_AUTO_RETRIES = 15'), 'Must support up to 15 auto-retries');
     assert.ok(mainJs.includes('កំពុងត្រួតពិនិត្យជួរដែលមិនទាន់ជោគជ័យ'), 'Must show Khmer checking banner');
     assert.ok(mainJs.includes('Auto-Retry (ជុំទី'), 'Must show round progress on banner');
     assert.ok(mainJs.includes('window.generateSingleVoice'), 'Must expose generateSingleVoice for direct row retry');
