@@ -64,6 +64,13 @@ async function runTests() {
     assert.ok(subJs.includes('Retry'), 'Must show Retry label on missing audio rows');
   });
 
+  it('public/js/main.js enforces 100-ID chunking with per-chunk auto-heal loop', () => {
+    const mainJs = fs.readFileSync(path.join(__dirname, '../public/js/main.js'), 'utf-8');
+    assert.ok(mainJs.includes('CHUNK_SIZE = 100'), 'Must enforce 100 items per chunk');
+    assert.ok(mainJs.includes('totalChunks'), 'Must track total chunks count');
+    assert.ok(mainJs.includes('cIdx < totalChunks'), 'Must loop through chunks sequentially');
+  });
+
   console.log('\n------------------------------------------------------');
   console.log(`  Tests Passed : ${passed}`);
   console.log(`  Tests Failed : ${failed}`);

@@ -424,7 +424,17 @@ export function ensureDelegatedTableListeners(tbody) {
       sub.selected = target.checked;
       const row = target.closest('tr');
       if (row) row.classList.toggle('bg-indigo-950/20', sub.selected);
-      state.emit('subtitlesChanged', state.subtitles);
+
+      // Lightweight direct timeline block sync without heavy DOM re-rendering (Zero Lag)
+      const tBlock = document.querySelector(`#track-t1 [data-id="${sub.id}"]`);
+      if (tBlock) {
+        tBlock.className = `absolute h-5.5 rounded flex items-center px-1.5 text-[10px] font-khmer truncate cursor-pointer transition shadow-sm select-none ${
+          sub.selected
+            ? 'bg-indigo-600/90 text-white border border-indigo-300 ring-1 ring-indigo-400'
+            : 'bg-indigo-950/70 border border-indigo-500/40 text-indigo-200 hover:bg-indigo-900/80'
+        }`;
+      }
+      window.updateRetryFailedButtonVisibility?.();
     } else if (target.matches('.sub-time-input')) {
       const field = target.getAttribute('data-field');
       const val = target.value.trim();
@@ -436,7 +446,23 @@ export function ensureDelegatedTableListeners(tbody) {
       if (field === 'end') sub.endSec = seconds;
 
       state.masterAudioUrl = null;
-      state.emit('subtitlesChanged', state.subtitles);
+
+      // Direct timeline block repositioning without destroying 5,500 elements (Zero Lag)
+      const pxPerSec = (state.pxPerSec || 50) * (state.zoomLevel || 1.0);
+      const leftPx = (sub.startSec || 0) * pxPerSec;
+      const widthPx = Math.max(24, ((sub.endSec || 0) - (sub.startSec || 0)) * pxPerSec);
+      const tBlock = document.querySelector(`#track-t1 [data-id="${sub.id}"]`);
+      const aBlock = document.querySelector(`#track-a1 [data-id="${sub.id}"]`);
+      if (tBlock) {
+        tBlock.style.left = `${leftPx}px`;
+        tBlock.style.width = `${widthPx}px`;
+        tBlock.title = `${sub.start} - ${sub.end}: ${sub.khmerText || ''}`;
+      }
+      if (aBlock) {
+        aBlock.style.left = `${leftPx}px`;
+        aBlock.style.width = `${widthPx}px`;
+      }
+      window.triggerProjectAutoSave?.();
     } else if (target.matches('.sub-voice-select')) {
       if (sub.voice !== target.value) {
         sub.voice = target.value;
@@ -448,8 +474,28 @@ export function ensureDelegatedTableListeners(tbody) {
             sub.oldAudioUrl = sub.audioUrl;
           }
         }
-        renderSubtitleTable();
-        state.emit('subtitlesChanged', state.subtitles);
+        const row = target.closest('tr');
+        if (row) {
+          row.classList.add('bg-indigo-950/20');
+          const cb = row.querySelector('.sub-row-check');
+          if (cb) cb.checked = true;
+
+          if (sub.status === 'Modified') {
+            const soundTd = row.querySelector('td:last-child');
+            if (soundTd) {
+              soundTd.innerHTML = `
+                <button onclick="window.playVoice('${sub.id}')"
+                  title="អត្ថបទត្រូវបានកែប្រែ (សូមចុច Re-Generate Voice ខាងក្រោម)"
+                  class="sub-voice-play-btn inline-flex items-center justify-center gap-1.5 px-3 py-1 rounded-lg bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/40 text-amber-400 hover:text-amber-300 font-medium text-xs transition active:scale-95 cursor-pointer">
+                  ${PLAY_ICON_SVG}
+                  <span class="text-[11px] font-mono font-bold">Play</span>
+                </button>
+              `;
+            }
+          }
+        }
+        window.triggerProjectAutoSave?.();
+        window.updateRetryFailedButtonVisibility?.();
         window.showToast?.(`បានប្តូរសំឡេងទៅជា ${sub.voice}`);
       }
     }
@@ -465,11 +511,11 @@ export function ensureDelegatedTableListeners(tbody) {
 
     if (target.matches('.sub-original-text-input')) {
       sub.originalText = target.value;
-      state.emit('subtitlesChanged', state.subtitles);
+      window.triggerProjectAutoSave?.();
     } else if (target.matches('.sub-english-text-input')) {
       autoResizeTextarea(target);
       sub.englishText = target.value;
-      state.emit('subtitlesChanged', state.subtitles);
+      window.triggerProjectAutoSave?.();
     } else if (target.matches('.sub-text-input')) {
       autoResizeTextarea(target);
       target.title = target.value;
@@ -505,8 +551,16 @@ export function ensureDelegatedTableListeners(tbody) {
         }
       }
 
+      // Sync the text on the timeline block directly without destroying 5,500 DOM elements (Ultra-Smooth Typing)
+      const tBlock = document.querySelector(`#track-t1 [data-id="${sub.id}"]`);
+      if (tBlock) {
+        tBlock.textContent = sub.khmerText || '';
+        tBlock.title = `${sub.start} - ${sub.end}: ${sub.khmerText || ''}`;
+      }
+
       state.emit('activeSubtitleUpdate', state.currentTime);
-      state.emit('subtitlesChanged', state.subtitles);
+      window.triggerProjectAutoSave?.();
+      window.updateRetryFailedButtonVisibility?.();
     }
   });
 
@@ -611,8 +665,25 @@ export function clearKhmerTranslations() {
 
 export function selectAllSubtitles(checked) {
   state.subtitles.forEach(s => s.selected = checked);
-  renderSubtitleTable();
-  state.emit('subtitlesChanged', state.subtitles);
+  const tbody = document.getElementById('subtitles-tbody');
+  if (tbody) {
+    tbody.querySelectorAll('.sub-row-check').forEach(cb => {
+      cb.checked = checked;
+      const r = cb.closest('tr');
+      if (r) r.classList.toggle('bg-indigo-950/20', checked);
+    });
+  }
+  const trackT1 = document.getElementById('track-t1');
+  if (trackT1) {
+    trackT1.querySelectorAll('[data-id]').forEach(b => {
+      b.className = `absolute h-5.5 rounded flex items-center px-1.5 text-[10px] font-khmer truncate cursor-pointer transition shadow-sm select-none ${
+        checked
+          ? 'bg-indigo-600/90 text-white border border-indigo-300 ring-1 ring-indigo-400'
+          : 'bg-indigo-950/70 border border-indigo-500/40 text-indigo-200 hover:bg-indigo-900/80'
+      }`;
+    });
+  }
+  window.updateRetryFailedButtonVisibility?.();
 }
 
 export function setAllVoices(voiceType) {

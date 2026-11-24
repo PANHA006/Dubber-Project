@@ -608,157 +608,185 @@ async function executeVoiceGeneration(itemsToProcess, mode = 'all') {
       banner.classList.remove('hidden');
     }
 
-    while (currentBatch.length > 0 && attempt <= MAX_AUTO_RETRIES) {
-      attempt++;
-      const isRetryRound = attempt > 1;
+    const CHUNK_SIZE = 100; // Bulletproof chunking: 100 IDs per chunk
+    const totalItemsCount = itemsToProcess.length;
+    const totalChunks = Math.ceil(totalItemsCount / CHUNK_SIZE);
 
-      if (isRetryRound) {
-        const roundNum = attempt - 1;
-        if (mode === 'selected' && btnRegenText) btnRegenText.textContent = `Auto-Retrying (${currentBatch.length})...`;
-        else if (mode === 'failed' && btnRetryText) btnRetryText.textContent = `Auto-Retrying (${currentBatch.length})...`;
-        else if (btnGenText) btnGenText.textContent = `Auto-Retrying (${currentBatch.length})...`;
+    for (let cIdx = 0; cIdx < totalChunks; cIdx++) {
+      const chunkStart = cIdx * CHUNK_SIZE;
+      const chunkEnd = Math.min(totalItemsCount, (cIdx + 1) * CHUNK_SIZE);
+      const chunkItems = itemsToProcess.slice(chunkStart, chunkEnd);
+      const chunkTag = totalChunks > 1 ? `[កញ្ចប់ ${cIdx + 1}/${totalChunks}] ` : '';
 
-        logToTerminal('CLIENT:TTS_AUTO_RETRY', `[Auto-Retry ${roundNum}/${MAX_AUTO_RETRIES}] Generating ${currentBatch.length} remaining/failed items...`);
-        if (statusText) statusText.textContent = `🔄 Auto-Retry (ជុំទី ${roundNum}/${MAX_AUTO_RETRIES})៖ នៅសល់ ${currentBatch.length} ជួរ...`;
-        window.showToast?.(`🔄 នៅសល់ ${currentBatch.length} ជួរ កំពុងបង្កើតឡើងវិញដោយស្វ័យប្រវត្តិ (ជុំទី ${roundNum}/${MAX_AUTO_RETRIES})...`);
+      let currentBatch = [...chunkItems];
+      let attempt = 0;
 
-        // Brief delay (1.2s) to allow Edge-TTS sockets and server buffers to cool down
-        await new Promise(r => setTimeout(r, 1200));
-      } else {
-        if (mode === 'selected' && btnRegenText) btnRegenText.textContent = 'Re-Generating...';
-        else if (mode === 'failed' && btnRetryText) btnRetryText.textContent = 'Retrying...';
-        else if (btnGenText) btnGenText.textContent = 'Generating...';
+      while (currentBatch.length > 0 && attempt <= MAX_AUTO_RETRIES) {
+        attempt++;
+        const isRetryRound = attempt > 1;
 
-        if (progressBar) progressBar.style.width = '0%';
-        if (countBadge) countBadge.textContent = `0 / ${currentBatch.length} (0%)`;
-        if (speedBadge) speedBadge.textContent = 'Speed: 1.0x';
-        if (statusText) statusText.textContent = `កំពុងដំណើរការបង្កើតសំឡេង (0/${currentBatch.length})...`;
+        if (isRetryRound) {
+          const roundNum = attempt - 1;
+          if (mode === 'selected' && btnRegenText) btnRegenText.textContent = `Auto-Retrying (${currentBatch.length})...`;
+          else if (mode === 'failed' && btnRetryText) btnRetryText.textContent = `Auto-Retrying (${currentBatch.length})...`;
+          else if (btnGenText) btnGenText.textContent = `Auto-Retrying (${currentBatch.length})...`;
 
-        const logPrefix = mode === 'selected' ? 'CLIENT:TTS_REGEN' : mode === 'failed' ? 'CLIENT:TTS_RETRY' : 'CLIENT:TTS';
-        logToTerminal(logPrefix, `Starting voice generation for ${currentBatch.length} items (Streaming mode)...`);
-      }
+          logToTerminal('CLIENT:TTS_AUTO_RETRY', `[Auto-Retry ${roundNum}/${MAX_AUTO_RETRIES}] Generating ${currentBatch.length} remaining/failed items for chunk ${cIdx + 1}/${totalChunks}...`);
+          if (statusText) statusText.textContent = `🔄 ${chunkTag}Auto-Retry (ជុំទី ${roundNum}/${MAX_AUTO_RETRIES})៖ នៅសល់ ${currentBatch.length} ជួរ...`;
+          window.showToast?.(`🔄 ${chunkTag}នៅសល់ ${currentBatch.length} ជួរ កំពុងបង្កើតឡើងវិញដោយស្វ័យប្រវត្តិ (ជុំទី ${roundNum}/${MAX_AUTO_RETRIES})...`);
 
-      const payload = {
-        items: currentBatch.map(getFreshSubtitlePayloadItem),
-        stream: true
-      };
+          // Brief delay (1.2s) to allow Edge-TTS sockets and server buffers to cool down
+          await new Promise(r => setTimeout(r, 1200));
+        } else {
+          if (mode === 'selected' && btnRegenText) btnRegenText.textContent = 'Re-Generating...';
+          else if (mode === 'failed' && btnRetryText) btnRetryText.textContent = 'Retrying...';
+          else if (btnGenText) btnGenText.textContent = 'Generating...';
 
-      const response = await fetch('/api/generate-voice?stream=true', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'text/event-stream'
-        },
-        body: JSON.stringify(payload)
-      });
+          const overallDone = itemsToProcess.filter(item => {
+            const sub = state.subtitles.find(s => s.id === item.id);
+            return sub && sub.audioUrl && sub.status === 'Ready';
+          }).length;
+          const initialPct = totalItemsCount > 0 ? Math.round((overallDone / totalItemsCount) * 100) : 0;
+          if (progressBar) progressBar.style.width = `${initialPct}%`;
+          if (countBadge) countBadge.textContent = `${overallDone} / ${totalItemsCount} (${initialPct}%)`;
+          if (speedBadge) speedBadge.textContent = 'Speed: 1.0x';
+          if (statusText) statusText.textContent = `កំពុងដំណើរការបង្កើតសំឡេង ${chunkTag}(${overallDone}/${totalItemsCount})...`;
 
-      if (!response.ok) {
-        const errJson = await response.json().catch(() => ({}));
-        throw new Error(errJson.message || `HTTP error ${response.status}`);
-      }
+          const logPrefix = mode === 'selected' ? 'CLIENT:TTS_REGEN' : mode === 'failed' ? 'CLIENT:TTS_RETRY' : 'CLIENT:TTS';
+          logToTerminal(logPrefix, `Starting voice generation for chunk ${cIdx + 1}/${totalChunks} (${chunkItems.length} items, Streaming mode)...`);
+        }
 
-      let voiceResults = [];
+        const payload = {
+          items: currentBatch.map(getFreshSubtitlePayloadItem),
+          stream: true
+        };
 
-      // Stream reader for real-time progress events
-      if (response.body && typeof response.body.getReader === 'function') {
-        const reader = response.body.getReader();
-        const decoder = new TextDecoder('utf-8');
-        let buffer = '';
+        const response = await fetch('/api/generate-voice?stream=true', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'text/event-stream'
+          },
+          body: JSON.stringify(payload)
+        });
 
-        while (true) {
-          const { value, done } = await reader.read();
-          if (done) break;
+        if (!response.ok) {
+          const errJson = await response.json().catch(() => ({}));
+          throw new Error(errJson.message || `HTTP error ${response.status}`);
+        }
 
-          buffer += decoder.decode(value, { stream: true });
-          const lines = buffer.split('\n');
-          buffer = lines.pop(); // keep partial
+        let voiceResults = [];
 
-          for (const line of lines) {
-            const trimmed = line.trim();
-            if (!trimmed.startsWith('data:')) continue;
-            const dataStr = trimmed.slice(5).trim();
-            if (!dataStr) continue;
+        // Stream reader for real-time progress events
+        if (response.body && typeof response.body.getReader === 'function') {
+          const reader = response.body.getReader();
+          const decoder = new TextDecoder('utf-8');
+          let buffer = '';
 
-            try {
-              const event = JSON.parse(dataStr);
-              if (event.type === 'progress') {
-                const current = event.current || 0;
-                const total = event.total || currentBatch.length;
-                const pct = total > 0 ? Math.round((current / total) * 100) : 0;
+          while (true) {
+            const { value, done } = await reader.read();
+            if (done) break;
 
-                if (progressBar) progressBar.style.width = `${pct}%`;
-                if (countBadge) countBadge.textContent = `${current} / ${total} (${pct}%)`;
-                if (speedBadge) speedBadge.textContent = `Speed: ${event.speed || 1.0}x`;
-                if (statusText) {
-                  const statusLabel = event.status === 'OK' ? 'ជោគជ័យ' : 'បរាជ័យ';
-                  const vName = String(event.voice || '').replace('km-KH-', '').replace('Neural', '');
-                  const prefix = isRetryRound ? `🔄 Auto-Retry [ជុំទី ${attempt - 1}]` : 'កំពុងដំណើរការ';
-                  statusText.textContent = `${prefix} (${current}/${total}) - [${vName || 'Edge TTS'}] ${statusLabel}`;
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split('\n');
+            buffer = lines.pop(); // keep partial
+
+            for (const line of lines) {
+              const trimmed = line.trim();
+              if (!trimmed.startsWith('data:')) continue;
+              const dataStr = trimmed.slice(5).trim();
+              if (!dataStr) continue;
+
+              try {
+                const event = JSON.parse(dataStr);
+                if (event.type === 'progress') {
+                  // Compute overall completed items across all chunks for accurate global progress
+                  const currentInChunk = event.current || 0;
+                  const chunkOffset = cIdx * CHUNK_SIZE;
+                  const globalCurrent = Math.min(totalItemsCount, chunkOffset + currentInChunk);
+                  const pct = totalItemsCount > 0 ? Math.round((globalCurrent / totalItemsCount) * 100) : 0;
+
+                  if (progressBar) progressBar.style.width = `${pct}%`;
+                  if (countBadge) countBadge.textContent = `${globalCurrent} / ${totalItemsCount} (${pct}%)`;
+                  if (speedBadge) speedBadge.textContent = `Speed: ${event.speed || 1.0}x`;
+                  if (statusText) {
+                    const statusLabel = event.status === 'OK' ? 'ជោគជ័យ' : 'បរាជ័យ';
+                    const vName = String(event.voice || '').replace('km-KH-', '').replace('Neural', '');
+                    const prefix = isRetryRound ? `🔄 Auto-Retry [ជុំទី ${attempt - 1}]` : 'កំពុងដំណើរការ';
+                    statusText.textContent = `${chunkTag}${prefix} (${globalCurrent}/${totalItemsCount}) - [${vName || 'Edge TTS'}] ${statusLabel}`;
+                  }
+                } else if (event.type === 'done') {
+                  voiceResults = event.data || [];
+                } else if (event.type === 'error') {
+                  logToTerminal('CLIENT:TTS_WARN', `Chunk ${cIdx + 1} pass ${attempt} notice: ${event.message}. Auto-recovering for remaining items...`);
                 }
-              } else if (event.type === 'done') {
-                voiceResults = event.data || [];
-              } else if (event.type === 'error') {
-                throw new Error(event.message || 'Generation stream error');
+              } catch (pe) {
+                if (pe.message && !pe.message.includes('JSON')) throw pe;
               }
-            } catch (pe) {
-              if (pe.message && !pe.message.includes('JSON')) throw pe;
             }
           }
+        } else {
+          const result = await response.json();
+          if (!result.success) throw new Error(result.message || 'Generation failed');
+          voiceResults = result.data || [];
         }
-      } else {
-        const result = await response.json();
-        if (!result.success) throw new Error(result.message || 'Generation failed');
-        voiceResults = result.data || [];
-      }
 
-      const voiceMap = {};
-      voiceResults.forEach(r => {
-        voiceMap[r.id] = r;
-      });
+        const voiceMap = {};
+        voiceResults.forEach(r => {
+          voiceMap[r.id] = r;
+        });
 
-      state.subtitles.forEach(sub => {
-        const vRes = voiceMap[sub.id];
-        if (vRes) {
-          if (vRes.success) {
-            sub.status = 'Ready';
-            sub.needsRegenerate = false;
-            if (mode === 'selected') sub.selected = false;
-            delete sub.oldAudioUrl;
-            sub.audioUrl = vRes.audioUrl;
-            sub.audioDuration = vRes.duration;
-            sub.targetDuration = vRes.targetDuration || null;
-            sub.speedApplied = vRes.speedApplied || 1.0;
-          } else {
-            sub.status = 'Failed';
+        state.subtitles.forEach(sub => {
+          const vRes = voiceMap[sub.id];
+          if (vRes) {
+            if (vRes.success) {
+              sub.status = 'Ready';
+              sub.needsRegenerate = false;
+              if (mode === 'selected') sub.selected = false;
+              delete sub.oldAudioUrl;
+              sub.audioUrl = vRes.audioUrl;
+              sub.audioDuration = vRes.duration;
+              sub.targetDuration = vRes.targetDuration || null;
+              sub.speedApplied = vRes.speedApplied || 1.0;
+            } else {
+              sub.status = 'Failed';
+            }
           }
+        });
+
+        renderSubtitleTable();
+        state.emit('subtitlesChanged', state.subtitles);
+        updateRetryFailedButtonVisibility();
+
+        // Check which items from THIS chunk still need audio:
+        const remainingUnfinishedInChunk = chunkItems.filter(item => {
+          const sub = state.subtitles.find(s => s.id === item.id);
+          return sub && (sub.khmerText || '').trim().length > 0 && (!sub.audioUrl || sub.status !== 'Ready');
+        });
+
+        if (remainingUnfinishedInChunk.length === 0) {
+          // Chunk is 100% completed!
+          if (totalChunks > 1 && statusText) {
+            statusText.textContent = `✅ កញ្ចប់ទី ${cIdx + 1}/${totalChunks} ជោគជ័យ ១០០% (${chunkItems.length}/${chunkItems.length})!`;
+          }
+          break;
         }
-      });
 
-      renderSubtitleTable();
-      state.emit('subtitlesChanged', state.subtitles);
-      updateRetryFailedButtonVisibility();
+        // Explicitly update banner to show that it is checking and preparing the auto-retry round for this chunk
+        if (statusText) {
+          statusText.textContent = `🔍 ${chunkTag}កំពុងត្រួតពិនិត្យជួរដែលមិនទាន់ជោគជ័យ... រកឃើញ ${remainingUnfinishedInChunk.length} ជួរ`;
+        }
+        logToTerminal('CLIENT:TTS_CHECK', `Chunk ${cIdx + 1} pass ${attempt} completed: ${remainingUnfinishedInChunk.length} rows need retry. Starting auto-retry round ${attempt}...`);
+        await new Promise(r => setTimeout(r, 800));
 
-      // Check which items from itemsToProcess still need audio:
-      const remainingUnfinished = itemsToProcess.filter(item => {
-        const sub = state.subtitles.find(s => s.id === item.id);
-        return sub && (sub.khmerText || '').trim().length > 0 && (!sub.audioUrl || sub.status !== 'Ready');
-      });
-
-      if (remainingUnfinished.length === 0) {
-        // Every single row has been successfully generated!
-        if (statusText) statusText.textContent = `✅ បង្កើតសំឡេងជោគជ័យគ្រប់ ${itemsToProcess.length} ជួរ (១០០%)!`;
-        break;
+        // Next attempt will target only the remaining unfinished rows in this chunk
+        currentBatch = remainingUnfinishedInChunk;
       }
 
-      // Explicitly update banner to show that it is checking and preparing the auto-retry round
-      if (statusText) {
-        statusText.textContent = `🔍 កំពុងត្រួតពិនិត្យជួរដែលមិនទាន់ជោគជ័យ... រកឃើញ ${remainingUnfinished.length} ជួរ`;
+      // Safe cool-down between chunks (800ms) to ensure sockets close cleanly
+      if (cIdx < totalChunks - 1) {
+        await new Promise(r => setTimeout(r, 800));
       }
-      logToTerminal('CLIENT:TTS_CHECK', `Pass ${attempt} completed: ${remainingUnfinished.length} rows need retry. Starting auto-retry round ${attempt}...`);
-      await new Promise(r => setTimeout(r, 800));
-
-      // Next attempt will target only the remaining unfinished rows
-      currentBatch = remainingUnfinished;
     }
 
     // Evaluate final overall results:
@@ -779,8 +807,9 @@ async function executeVoiceGeneration(itemsToProcess, mode = 'all') {
       window.showToast(`⚠️ បានបង្កើតសំឡេងចំនួន ${finalReadyCount}/${itemsToProcess.length} ជួរ (នៅសល់ ${failCount} ជួរមិនទាន់បាន)`);
     }
 
-    // Auto-Assemble Full Timeline Master Voice Audio Track (Equal to Video Duration)
-    if (finalReadyCount > 0) {
+    // Auto-Assemble Full Timeline Master Voice Audio Track (Only on full generation, skip on single/small selected retry)
+    const isFullGeneration = mode === 'all' || itemsToProcess.length >= Math.max(10, Math.round(state.subtitles.length * 0.7));
+    if (finalReadyCount > 0 && isFullGeneration) {
       try {
         if (statusText) statusText.textContent = '⚡ កំពុងផ្គុំសំឡេងមេ (Master Timeline Audio) ស្មើនឹងវីដេអូដើម...';
         logToTerminal('CLIENT:MASTER_TIMELINE_BUILD', `Auto-assembling Master Timeline Voice Audio for ${state.subtitles.length} subtitles...`);
@@ -2555,26 +2584,26 @@ window.triggerProjectAutoSave = function(immediate = false, allowEmpty = false) 
     }
   }
 
-  const payload = getProjectPayload();
-  if (allowEmpty) {
-    payload.isExplicitClear = true;
-  } else if ((!payload.subtitles || payload.subtitles.length === 0)) {
-    // Safety guard: Don't overwrite existing cached subtitles with empty array
-    try {
-      const cached = localStorage.getItem('dubber_autosave_project');
-      if (cached) {
-        const parsed = JSON.parse(cached);
-        if (Array.isArray(parsed.subtitles) && parsed.subtitles.length > 0) {
-          payload.subtitles = parsed.subtitles;
-        }
-      }
-    } catch (_) {}
-  }
-
   // LAYER 2: Debounced Local & Server persistence
   const executeServerSave = async () => {
     try {
       setSavingUI();
+      const payload = getProjectPayload();
+      if (allowEmpty) {
+        payload.isExplicitClear = true;
+      } else if ((!payload.subtitles || payload.subtitles.length === 0)) {
+        // Safety guard: Don't overwrite existing cached subtitles with empty array
+        try {
+          const cached = localStorage.getItem('dubber_autosave_project');
+          if (cached) {
+            const parsed = JSON.parse(cached);
+            if (Array.isArray(parsed.subtitles) && parsed.subtitles.length > 0) {
+              payload.subtitles = parsed.subtitles;
+            }
+          }
+        } catch (_) {}
+      }
+
       // LAYER 1: localStorage write inside debounced execution
       try {
         localStorage.setItem('dubber_autosave_project', JSON.stringify(payload));
@@ -2607,7 +2636,7 @@ window.triggerProjectAutoSave = function(immediate = false, allowEmpty = false) 
   } else {
     setSavingUI();
     if (autoSaveTimer) clearTimeout(autoSaveTimer);
-    autoSaveTimer = setTimeout(executeServerSave, 500);
+    autoSaveTimer = setTimeout(executeServerSave, 2000);
   }
 };
 

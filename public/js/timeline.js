@@ -8,8 +8,14 @@ export function initTimeline() {
   renderTimelineTracks();
   setupTimelineInteractions();
 
+  let timelineRenderPending = false;
   state.on('subtitlesChanged', () => {
-    renderTimelineTracks();
+    if (timelineRenderPending) return;
+    timelineRenderPending = true;
+    requestAnimationFrame(() => {
+      timelineRenderPending = false;
+      renderTimelineTracks();
+    });
   });
 
   state.on('timeUpdated', (time) => {

@@ -53,11 +53,11 @@ VOICE_MAP = {
 TOTAL_CORES = os.cpu_count() or 8
 NET_CONCURRENCY = max(16, int(os.environ.get("TTS_NET_CONCURRENCY", str(TOTAL_CORES * 2)) or 16))
 CPU_CONCURRENCY = max(4, int(os.environ.get("TTS_CPU_CONCURRENCY", str(TOTAL_CORES)) or TOTAL_CORES))
-MAX_RETRIES = max(0, int(os.environ.get("TTS_MAX_RETRIES", "3") or 3))
+MAX_RETRIES = max(0, min(1, int(os.environ.get("TTS_MAX_RETRIES", "1") or 1)))
 MAX_SPEED_CAP = max(1.05, min(2.00, float(os.environ.get("TTS_MAX_SPEED", "1.85") or 1.85)))
 SPEED_TOLERANCE_SEC = 0.20  # Allow natural breath overrun up to 200ms before forcing speed-up
 PROCESS_TIMEOUT = 120  # seconds before a helper binary is considered hung
-NET_TIMEOUT = max(10, int(os.environ.get("TTS_NET_TIMEOUT", "25") or 25))  # seconds before websocket synthesis is considered hung
+NET_TIMEOUT = max(8, min(20, int(os.environ.get("TTS_NET_TIMEOUT", "12") or 12)))  # seconds before websocket synthesis is considered hung
 
 
 def resolve_voice(voice_str):
@@ -610,7 +610,7 @@ async def main():
         try:
             res = await asyncio.wait_for(
                 generate_single_item(item, output_dir, net_sem, cpu_sem, is_last=is_last),
-                timeout=45.0
+                timeout=25.0
             )
         except asyncio.TimeoutError:
             res = {"id": sub_id, "success": False, "error": "Item synthesis timed out"}

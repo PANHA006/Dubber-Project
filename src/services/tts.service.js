@@ -175,9 +175,11 @@ class TTSService {
 
       // Inactivity watchdog: if no progress/output is received for 35s, force close so pipeline auto-heals
       let activityTimer = null;
+      let watchdogTriggered = false;
       const resetActivityTimer = () => {
         if (activityTimer) clearTimeout(activityTimer);
         activityTimer = setTimeout(() => {
+          watchdogTriggered = true;
           formatTerminalLog('TTS:WARN', 'TTS Worker inactivity watchdog triggered (35s no progress). Terminating stuck worker to enable auto-retry...');
           try { proc.kill('SIGTERM'); } catch (_) {}
         }, 35000);
@@ -249,6 +251,45 @@ class TTSService {
         }
 
         if (code !== 0) {
+          // If watchdog triggered or process exited abnormally, check for recovered audio files
+          const recoveredResults = items.map(item => {
+            const outFilename = `voice_${item.id}.mp3`;
+            const outPath = path.join(this.storageDir, outFilename);
+            const metaPath = path.join(this.storageDir, `voice_${item.id}.json`);
+            const exists = fs.existsSync(outPath) && fs.statSync(outPath).size > 0;
+            let duration = 0;
+            let speedApplied = 1.0;
+            if (exists && fs.existsSync(metaPath)) {
+              try {
+                const meta = JSON.parse(fs.readFileSync(metaPath, 'utf-8'));
+                duration = meta.duration || 0;
+                speedApplied = meta.speedApplied || 1.0;
+              } catch (_) {}
+            }
+            return {
+              id: item.id,
+              success: exists,
+              filename: exists ? outFilename : null,
+              audioUrl: exists ? `/storage/voices/${outFilename}` : null,
+              duration: duration,
+              speedApplied: speedApplied,
+              error: exists ? null : (watchdogTriggered ? 'Worker stalled (Watchdog auto-heal)' : (stderr.trim() || 'Worker exited'))
+            };
+          });
+
+          const validCount = recoveredResults.filter(r => r.success).length;
+
+          // If watchdog triggered or at least one item was generated before exit, gracefully resolve
+          // so that the frontend's 15-round Auto-Retry loop seamlessly continues!
+          if (watchdogTriggered || validCount > 0) {
+            formatTerminalLog('TTS:WARN', `Watchdog auto-heal recovered ${validCount}/${items.length} items. Advancing to next auto-retry pass...`);
+            return resolve({
+              success: true,
+              count: validCount,
+              results: recoveredResults
+            });
+          }
+
           formatTerminalLog('TTS:ERROR', `TTS Worker exited with code ${code}`, { stderr });
           return reject(new Error(`TTS generation failed (code ${code}): ${stderr}`));
         }
