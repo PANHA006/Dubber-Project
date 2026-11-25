@@ -51,7 +51,7 @@ VOICE_MAP = {
 }
 
 TOTAL_CORES = os.cpu_count() or 8
-NET_CONCURRENCY = max(16, int(os.environ.get("TTS_NET_CONCURRENCY", str(TOTAL_CORES * 2)) or 16))
+NET_CONCURRENCY = max(8, int(os.environ.get("TTS_NET_CONCURRENCY", "24") or 24))
 CPU_CONCURRENCY = max(4, int(os.environ.get("TTS_CPU_CONCURRENCY", str(TOTAL_CORES)) or TOTAL_CORES))
 MAX_RETRIES = max(0, min(1, int(os.environ.get("TTS_MAX_RETRIES", "1") or 1)))
 MAX_SPEED_CAP = max(1.05, min(2.00, float(os.environ.get("TTS_MAX_SPEED", "1.85") or 1.85)))

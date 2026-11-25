@@ -610,54 +610,55 @@ async function executeVoiceGeneration(itemsToProcess, mode = 'all') {
 
     const CHUNK_SIZE = 100; // Bulletproof chunking: 100 IDs per chunk
     const totalItemsCount = itemsToProcess.length;
-    const totalChunks = Math.ceil(totalItemsCount / CHUNK_SIZE);
+    let remainingToProcess = [...itemsToProcess];
+    let passCount = 0;
 
-    for (let cIdx = 0; cIdx < totalChunks; cIdx++) {
-      const chunkStart = cIdx * CHUNK_SIZE;
-      const chunkEnd = Math.min(totalItemsCount, (cIdx + 1) * CHUNK_SIZE);
-      const chunkItems = itemsToProcess.slice(chunkStart, chunkEnd);
-      const chunkTag = totalChunks > 1 ? `[កញ្ចប់ ${cIdx + 1}/${totalChunks}] ` : '';
+    while (remainingToProcess.length > 0 && passCount <= MAX_AUTO_RETRIES) {
+      passCount++;
+      const isRetryRound = passCount > 1;
+      const totalPassItems = remainingToProcess.length;
+      const totalChunks = Math.ceil(totalPassItems / CHUNK_SIZE);
+      const roundNum = passCount - 1;
 
-      let currentBatch = [...chunkItems];
-      let attempt = 0;
+      if (isRetryRound) {
+        if (mode === 'selected' && btnRegenText) btnRegenText.textContent = `Auto-Retrying (${remainingToProcess.length})...`;
+        else if (mode === 'failed' && btnRetryText) btnRetryText.textContent = `Auto-Retrying (${remainingToProcess.length})...`;
+        else if (btnGenText) btnGenText.textContent = `Auto-Retrying (${remainingToProcess.length})...`;
 
-      while (currentBatch.length > 0 && attempt <= MAX_AUTO_RETRIES) {
-        attempt++;
-        const isRetryRound = attempt > 1;
+        logToTerminal('CLIENT:TTS_AUTO_RETRY', `[Auto-Retry ${roundNum}/${MAX_AUTO_RETRIES}] Generating ${remainingToProcess.length} remaining/failed items (Re-chunked into ${totalChunks} chunks of up to ${CHUNK_SIZE})...`);
+        if (statusText) statusText.textContent = `🔄 Auto-Retry (ជុំទី ${roundNum}/${MAX_AUTO_RETRIES})៖ នៅសល់ ${remainingToProcess.length} ជួរ (បំបែកជា ${totalChunks} កញ្ចប់)...`;
+        window.showToast?.(`🔄 នៅសល់ ${remainingToProcess.length} ជួរ កំពុងបង្កើតឡើងវិញដោយស្វ័យប្រវត្តិ (ជុំទី ${roundNum}/${MAX_AUTO_RETRIES})...`);
 
-        if (isRetryRound) {
-          const roundNum = attempt - 1;
-          if (mode === 'selected' && btnRegenText) btnRegenText.textContent = `Auto-Retrying (${currentBatch.length})...`;
-          else if (mode === 'failed' && btnRetryText) btnRetryText.textContent = `Auto-Retrying (${currentBatch.length})...`;
-          else if (btnGenText) btnGenText.textContent = `Auto-Retrying (${currentBatch.length})...`;
+        // Cool-down (1.2s) between global passes to let Edge-TTS sockets and server buffers clear completely
+        await new Promise(r => setTimeout(r, 1200));
+      } else {
+        if (mode === 'selected' && btnRegenText) btnRegenText.textContent = 'Re-Generating...';
+        else if (mode === 'failed' && btnRetryText) btnRetryText.textContent = 'Retrying...';
+        else if (btnGenText) btnGenText.textContent = 'Generating...';
 
-          logToTerminal('CLIENT:TTS_AUTO_RETRY', `[Auto-Retry ${roundNum}/${MAX_AUTO_RETRIES}] Generating ${currentBatch.length} remaining/failed items for chunk ${cIdx + 1}/${totalChunks}...`);
-          if (statusText) statusText.textContent = `🔄 ${chunkTag}Auto-Retry (ជុំទី ${roundNum}/${MAX_AUTO_RETRIES})៖ នៅសល់ ${currentBatch.length} ជួរ...`;
-          window.showToast?.(`🔄 ${chunkTag}នៅសល់ ${currentBatch.length} ជួរ កំពុងបង្កើតឡើងវិញដោយស្វ័យប្រវត្តិ (ជុំទី ${roundNum}/${MAX_AUTO_RETRIES})...`);
+        const overallDone = itemsToProcess.filter(item => {
+          const sub = state.subtitles.find(s => s.id === item.id);
+          return sub && sub.audioUrl && sub.status === 'Ready';
+        }).length;
+        const initialPct = totalItemsCount > 0 ? Math.round((overallDone / totalItemsCount) * 100) : 0;
+        if (progressBar) progressBar.style.width = `${initialPct}%`;
+        if (countBadge) countBadge.textContent = `${overallDone} / ${totalItemsCount} (${initialPct}%)`;
+        if (speedBadge) speedBadge.textContent = 'Speed: 1.0x';
+        if (statusText) statusText.textContent = `កំពុងដំណើរការបង្កើតសំឡេង (${overallDone}/${totalItemsCount})...`;
 
-          // Brief delay (1.2s) to allow Edge-TTS sockets and server buffers to cool down
-          await new Promise(r => setTimeout(r, 1200));
-        } else {
-          if (mode === 'selected' && btnRegenText) btnRegenText.textContent = 'Re-Generating...';
-          else if (mode === 'failed' && btnRetryText) btnRetryText.textContent = 'Retrying...';
-          else if (btnGenText) btnGenText.textContent = 'Generating...';
+        const logPrefix = mode === 'selected' ? 'CLIENT:TTS_REGEN' : mode === 'failed' ? 'CLIENT:TTS_RETRY' : 'CLIENT:TTS';
+        logToTerminal(logPrefix, `Starting voice generation for ${totalItemsCount} items (Split into ${totalChunks} chunks of up to ${CHUNK_SIZE}, Streaming mode)...`);
+      }
 
-          const overallDone = itemsToProcess.filter(item => {
-            const sub = state.subtitles.find(s => s.id === item.id);
-            return sub && sub.audioUrl && sub.status === 'Ready';
-          }).length;
-          const initialPct = totalItemsCount > 0 ? Math.round((overallDone / totalItemsCount) * 100) : 0;
-          if (progressBar) progressBar.style.width = `${initialPct}%`;
-          if (countBadge) countBadge.textContent = `${overallDone} / ${totalItemsCount} (${initialPct}%)`;
-          if (speedBadge) speedBadge.textContent = 'Speed: 1.0x';
-          if (statusText) statusText.textContent = `កំពុងដំណើរការបង្កើតសំឡេង ${chunkTag}(${overallDone}/${totalItemsCount})...`;
-
-          const logPrefix = mode === 'selected' ? 'CLIENT:TTS_REGEN' : mode === 'failed' ? 'CLIENT:TTS_RETRY' : 'CLIENT:TTS';
-          logToTerminal(logPrefix, `Starting voice generation for chunk ${cIdx + 1}/${totalChunks} (${chunkItems.length} items, Streaming mode)...`);
-        }
+      // Tier 2: Sweep sequentially through all chunks of this pass without inner stall
+      for (let cIdx = 0; cIdx < totalChunks; cIdx++) {
+        const chunkStart = cIdx * CHUNK_SIZE;
+        const chunkEnd = Math.min(totalPassItems, (cIdx + 1) * CHUNK_SIZE);
+        const chunkItems = remainingToProcess.slice(chunkStart, chunkEnd);
+        const chunkTag = totalChunks > 1 ? `[កញ្ចប់ ${cIdx + 1}/${totalChunks}] ` : '';
 
         const payload = {
-          items: currentBatch.map(getFreshSubtitlePayloadItem),
+          items: chunkItems.map(getFreshSubtitlePayloadItem),
           stream: true
         };
 
@@ -700,25 +701,27 @@ async function executeVoiceGeneration(itemsToProcess, mode = 'all') {
               try {
                 const event = JSON.parse(dataStr);
                 if (event.type === 'progress') {
-                  // Compute overall completed items across all chunks for accurate global progress
-                  const currentInChunk = event.current || 0;
-                  const chunkOffset = cIdx * CHUNK_SIZE;
-                  const globalCurrent = Math.min(totalItemsCount, chunkOffset + currentInChunk);
-                  const pct = totalItemsCount > 0 ? Math.round((globalCurrent / totalItemsCount) * 100) : 0;
+                  // Compute overall completed items across all subtitles for accurate global progress
+                  const overallDoneSoFar = itemsToProcess.filter(item => {
+                    const sub = state.subtitles.find(s => s.id === item.id);
+                    return sub && sub.audioUrl && sub.status === 'Ready';
+                  }).length;
+                  const approxTotalDone = Math.min(totalItemsCount, overallDoneSoFar + (event.status === 'OK' ? 1 : 0));
+                  const pct = totalItemsCount > 0 ? Math.round((approxTotalDone / totalItemsCount) * 100) : 0;
 
                   if (progressBar) progressBar.style.width = `${pct}%`;
-                  if (countBadge) countBadge.textContent = `${globalCurrent} / ${totalItemsCount} (${pct}%)`;
+                  if (countBadge) countBadge.textContent = `${approxTotalDone} / ${totalItemsCount} (${pct}%)`;
                   if (speedBadge) speedBadge.textContent = `Speed: ${event.speed || 1.0}x`;
                   if (statusText) {
                     const statusLabel = event.status === 'OK' ? 'ជោគជ័យ' : 'បរាជ័យ';
                     const vName = String(event.voice || '').replace('km-KH-', '').replace('Neural', '');
-                    const prefix = isRetryRound ? `🔄 Auto-Retry [ជុំទី ${attempt - 1}]` : 'កំពុងដំណើរការ';
-                    statusText.textContent = `${chunkTag}${prefix} (${globalCurrent}/${totalItemsCount}) - [${vName || 'Edge TTS'}] ${statusLabel}`;
+                    const prefix = isRetryRound ? `🔄 Auto-Retry [ជុំទី ${roundNum}]` : 'កំពុងដំណើរការ';
+                    statusText.textContent = `${chunkTag}${prefix} (${approxTotalDone}/${totalItemsCount}) - [${vName || 'Edge TTS'}] ${statusLabel}`;
                   }
                 } else if (event.type === 'done') {
                   voiceResults = event.data || [];
                 } else if (event.type === 'error') {
-                  logToTerminal('CLIENT:TTS_WARN', `Chunk ${cIdx + 1} pass ${attempt} notice: ${event.message}. Auto-recovering for remaining items...`);
+                  logToTerminal('CLIENT:TTS_WARN', `Chunk ${cIdx + 1}/${totalChunks} notice: ${event.message}. Auto-recovering for remaining items...`);
                 }
               } catch (pe) {
                 if (pe.message && !pe.message.includes('JSON')) throw pe;
@@ -758,35 +761,39 @@ async function executeVoiceGeneration(itemsToProcess, mode = 'all') {
         state.emit('subtitlesChanged', state.subtitles);
         updateRetryFailedButtonVisibility();
 
-        // Check which items from THIS chunk still need audio:
-        const remainingUnfinishedInChunk = chunkItems.filter(item => {
-          const sub = state.subtitles.find(s => s.id === item.id);
-          return sub && (sub.khmerText || '').trim().length > 0 && (!sub.audioUrl || sub.status !== 'Ready');
-        });
-
-        if (remainingUnfinishedInChunk.length === 0) {
-          // Chunk is 100% completed!
-          if (totalChunks > 1 && statusText) {
-            statusText.textContent = `✅ កញ្ចប់ទី ${cIdx + 1}/${totalChunks} ជោគជ័យ ១០០% (${chunkItems.length}/${chunkItems.length})!`;
-          }
-          break;
+        // Safe cool-down between chunks (800ms) to ensure sockets close cleanly
+        if (cIdx < totalChunks - 1) {
+          await new Promise(r => setTimeout(r, 800));
         }
+      }
 
-        // Explicitly update banner to show that it is checking and preparing the auto-retry round for this chunk
+      // End of this Global Pass: scan all items in itemsToProcess to find remaining unfinished rows
+      const remainingUnfinished = itemsToProcess.filter(item => {
+        const sub = state.subtitles.find(s => s.id === item.id);
+        return sub && (sub.khmerText || '').trim().length > 0 && (!sub.audioUrl || sub.status !== 'Ready');
+      });
+
+      if (remainingUnfinished.length === 0) {
+        // All items across all chunks 100% completed!
         if (statusText) {
-          statusText.textContent = `🔍 ${chunkTag}កំពុងត្រួតពិនិត្យជួរដែលមិនទាន់ជោគជ័យ... រកឃើញ ${remainingUnfinishedInChunk.length} ជួរ`;
+          statusText.textContent = `✅ បានបង្កើតសំឡេងជោគជ័យ ១០០% គ្រប់ ${totalItemsCount}/${totalItemsCount} ជួរ!`;
         }
-        logToTerminal('CLIENT:TTS_CHECK', `Chunk ${cIdx + 1} pass ${attempt} completed: ${remainingUnfinishedInChunk.length} rows need retry. Starting auto-retry round ${attempt}...`);
-        await new Promise(r => setTimeout(r, 800));
-
-        // Next attempt will target only the remaining unfinished rows in this chunk
-        currentBatch = remainingUnfinishedInChunk;
+        break;
       }
 
-      // Safe cool-down between chunks (800ms) to ensure sockets close cleanly
-      if (cIdx < totalChunks - 1) {
-        await new Promise(r => setTimeout(r, 800));
+      if (passCount > MAX_AUTO_RETRIES) {
+        break;
       }
+
+      // Explicitly update banner to show that it is checking and preparing the auto-retry round
+      if (statusText) {
+        statusText.textContent = `🔍 កំពុងត្រួតពិនិត្យជួរដែលមិនទាន់ជោគជ័យ... រកឃើញ ${remainingUnfinished.length} ជួរ`;
+      }
+      logToTerminal('CLIENT:TTS_CHECK', `Pass ${passCount} completed: ${remainingUnfinished.length} rows need retry. Re-chunking into 100-ID batches for auto-retry round ${passCount}...`);
+      await new Promise(r => setTimeout(r, 800));
+
+      // Next global pass will target only the remaining unfinished rows, re-chunked into 100 IDs per chunk!
+      remainingToProcess = remainingUnfinished;
     }
 
     // Evaluate final overall results:
