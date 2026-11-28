@@ -1,4 +1,5 @@
 const { spawn } = require('child_process');
+const crypto = require('crypto');
 const path = require('path');
 const fs = require('fs');
 const config = require('../config');
@@ -569,11 +570,13 @@ class VideoRendererService {
     }
 
     const BATCH_SIZE = 35;
+    const TREE_MERGE_SIZE = 10;
+    const runId = crypto.randomUUID().slice(0, 8);
     const tempFiles = [];
 
     try {
       const renderBatch = async (batchClips, batchIdx) => {
-        const batchOutFilename = `temp_stem_${Date.now()}_${batchIdx}.wav`;
+        const batchOutFilename = `temp_stem_${runId}_${batchIdx}.wav`;
         const batchOutPath = path.join(this.voiceStorageDir, batchOutFilename);
         tempFiles.push(batchOutPath);
 
@@ -655,33 +658,11 @@ class VideoRendererService {
         })
       );
 
-      // Mix all batch stems into one final master voice track
-      const masterPath = path.join(this.voiceStorageDir, `master_voice_${Date.now()}.wav`);
+      // Mix all batch stems into one final master voice track (2-stage parallel tree-merge when > 10 stems)
+      const masterPath = path.join(this.voiceStorageDir, `master_voice_${runId}.wav`);
       tempFiles.push(masterPath);
 
-      const mergeArgs = ['-y'];
-      batchStemPaths.forEach(sp => {
-        mergeArgs.push('-i', sp);
-      });
-      mergeArgs.push('-filter_complex', `amix=inputs=${batchStemPaths.length}:dropout_transition=0:normalize=0[master_out]`);
-      mergeArgs.push('-map', '[master_out]', '-c:a', 'pcm_s16le', '-ar', '44100', '-ac', '2');
-      if (videoDuration > 0) {
-        mergeArgs.push('-t', videoDuration.toFixed(3));
-      }
-      mergeArgs.push(masterPath);
-
-      await new Promise((resolve, reject) => {
-        const proc = spawn('ffmpeg', mergeArgs, { windowsHide: true });
-        let errStr = '';
-        proc.stderr.on('data', chunk => { errStr += chunk.toString(); });
-        proc.on('close', code => {
-          if (code !== 0) {
-            return reject(new Error(`Failed to mix audio stems: ${errStr.slice(-250)}`));
-          }
-          resolve(masterPath);
-        });
-        proc.on('error', reject);
-      });
+      await this.mergeStemsHierarchical(batchStemPaths, runId, videoDuration, tempFiles, masterPath, TREE_MERGE_SIZE);
 
       return { masterVoicePath: masterPath, tempFiles };
     } catch (err) {
@@ -693,11 +674,95 @@ class VideoRendererService {
   }
 
   /**
-   * Builds a persistent, full-timeline master audio file from subtitles.
-   * Total audio duration equals original video duration.
-   * Silence gaps are naturally filled with silence.
+   * Mix a small group of stem WAVs (<= 10) into a single WAV via FFmpeg amix.
    */
-  async buildTimelineMasterAudio({ videoUrl = null, subtitles = [], videoDuration = 0, dubVolume = 1.0 }) {
+  async mixAudioStems(stemPaths, outputPath, videoDuration = 0) {
+    if (stemPaths.length === 1) {
+      fs.copyFileSync(stemPaths[0], outputPath);
+      return outputPath;
+    }
+    const mergeArgs = ['-y'];
+    stemPaths.forEach(sp => {
+      mergeArgs.push('-i', sp);
+    });
+    mergeArgs.push('-filter_complex', `amix=inputs=${stemPaths.length}:dropout_transition=0:normalize=0[master_out]`);
+    mergeArgs.push('-map', '[master_out]', '-c:a', 'pcm_s16le', '-ar', '44100', '-ac', '2');
+    if (videoDuration > 0) {
+      mergeArgs.push('-t', videoDuration.toFixed(3));
+    }
+    mergeArgs.push(outputPath);
+
+    await new Promise((resolve, reject) => {
+      const proc = spawn('ffmpeg', mergeArgs, { windowsHide: true });
+      let errStr = '';
+      proc.stderr.on('data', chunk => { errStr += chunk.toString(); });
+      proc.on('close', code => {
+        if (code !== 0) {
+          return reject(new Error(`Failed to mix audio stems: ${errStr.slice(-250)}`));
+        }
+        resolve(outputPath);
+      });
+      proc.on('error', reject);
+    });
+    return outputPath;
+  }
+
+  /**
+   * Hierarchically merge stems in parallel groups of maxGroupSize (e.g. 10)
+   * so FFmpeg never opens 40+ large WAVs in a single amix filtergraph.
+   */
+  async mergeStemsHierarchical(stemPaths, runId, videoDuration, tempFiles, finalMasterPath, maxGroupSize = 10) {
+    let currentStems = [...stemPaths];
+    let round = 0;
+
+    while (currentStems.length > maxGroupSize) {
+      round++;
+      const groups = [];
+      for (let i = 0; i < currentStems.length; i += maxGroupSize) {
+        groups.push(currentStems.slice(i, i + maxGroupSize));
+      }
+
+      const nextStems = await Promise.all(
+        groups.map(async (group, gIdx) => {
+          if (group.length === 1) return group[0];
+          const groupOut = path.join(this.voiceStorageDir, `temp_merge_${runId}_r${round}_g${gIdx}.wav`);
+          tempFiles.push(groupOut);
+          await this.mixAudioStems(group, groupOut, videoDuration);
+          // Clean up consumed stems from previous round immediately to save disk space
+          group.forEach(used => {
+            try { if (fs.existsSync(used)) fs.unlinkSync(used); } catch (_) {}
+          });
+          return groupOut;
+        })
+      );
+
+      currentStems = nextStems;
+    }
+
+    await this.mixAudioStems(currentStems, finalMasterPath, videoDuration);
+    return finalMasterPath;
+  }
+
+  /**
+   * Builds a persistent, full-timeline master audio file from subtitles.
+   * Coalesces concurrent requests via a single-flight lock so two overlapping
+   * requests never spawn duplicate FFmpeg stem batches at the same time.
+   */
+  async buildTimelineMasterAudio(params) {
+    if (this._activeMasterBuildPromise) {
+      formatTerminalLog('MASTER_TIMELINE:COALESCE', 'Master Timeline Audio build already in progress; coalescing duplicate request...');
+      return this._activeMasterBuildPromise;
+    }
+
+    this._activeMasterBuildPromise = this._buildTimelineMasterAudioInternal(params)
+      .finally(() => {
+        this._activeMasterBuildPromise = null;
+      });
+
+    return this._activeMasterBuildPromise;
+  }
+
+  async _buildTimelineMasterAudioInternal({ videoUrl = null, subtitles = [], videoDuration = 0, dubVolume = 1.0 }) {
     this.ensureDirs();
 
     let targetDuration = videoDuration;

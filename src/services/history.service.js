@@ -237,8 +237,9 @@ class HistoryService {
       throw new Error(`History record not found: ${id}`);
     }
 
-    // Delete physical file
-    if (target.filePath && fs.existsSync(target.filePath)) {
+    // Delete physical file only if it lives inside project storageDir
+    const storageRoot = path.resolve(config.storageDir);
+    if (target.filePath && this._isPathInsideDir(target.filePath, storageRoot) && fs.existsSync(target.filePath)) {
       try {
         fs.unlinkSync(target.filePath);
         formatTerminalLog('HISTORY:FILE_DELETED', `Deleted file from disk: ${target.filePath}`);
@@ -253,7 +254,84 @@ class HistoryService {
   }
 
   /**
-   * Clear all history records and delete requested files via clearAllHistory()
+   * Ensure targetPath is strictly inside baseDir so cleanup never touches files outside Dubber-Project.
+   */
+  _isPathInsideDir(targetPath, baseDir) {
+    if (!targetPath || !baseDir) return false;
+    try {
+      const resolvedBase = path.resolve(baseDir);
+      const resolvedTarget = path.resolve(targetPath);
+      const rel = path.relative(
+        process.platform === 'win32' ? resolvedBase.toLowerCase() : resolvedBase,
+        process.platform === 'win32' ? resolvedTarget.toLowerCase() : resolvedTarget
+      );
+      return rel !== '' && !rel.startsWith('..') && !path.isAbsolute(rel);
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /**
+   * Recursively compute file count & byte size of a directory before removal.
+   */
+  _measureDirStats(dirPath) {
+    let count = 0;
+    let bytes = 0;
+    try {
+      for (const entry of fs.readdirSync(dirPath)) {
+        const full = path.join(dirPath, entry);
+        const stat = fs.lstatSync(full);
+        if (stat.isDirectory()) {
+          const sub = this._measureDirStats(full);
+          count += sub.count;
+          bytes += sub.bytes;
+        } else {
+          count++;
+          bytes += stat.size;
+        }
+      }
+    } catch (_) {}
+    return { count, bytes };
+  }
+
+  /**
+   * Remove all files and subdirectories inside dirPath (preserving .gitkeep),
+   * strictly guarded to remain inside storageRoot.
+   */
+  _clearDirectoryContents(dirPath, storageRoot) {
+    let deletedCount = 0;
+    let deletedBytes = 0;
+    if (!dirPath || !this._isPathInsideDir(dirPath, storageRoot) || !fs.existsSync(dirPath)) {
+      return { deletedCount, deletedBytes };
+    }
+
+    try {
+      for (const entry of fs.readdirSync(dirPath)) {
+        if (entry === '.gitkeep') continue;
+        const fullPath = path.join(dirPath, entry);
+        try {
+          const stat = fs.lstatSync(fullPath);
+          if (stat.isDirectory()) {
+            const sub = this._measureDirStats(fullPath);
+            fs.rmSync(fullPath, { recursive: true, force: true });
+            deletedCount += sub.count;
+            deletedBytes += sub.bytes;
+          } else {
+            deletedBytes += stat.size;
+            fs.unlinkSync(fullPath);
+            deletedCount++;
+          }
+        } catch (_) {}
+      }
+    } catch (err) {
+      formatTerminalLog('HISTORY:CLEAR_DIR_ERR', `Failed to clear ${dirPath}: ${err.message}`);
+    }
+
+    return { deletedCount, deletedBytes };
+  }
+
+  /**
+   * Clear all history records and delete project-local storage files only.
    */
   clearAllHistory(options = {}) {
     const { items } = this.getHistory();
@@ -264,13 +342,14 @@ class HistoryService {
       clearProjects = true
     } = options;
 
+    const storageRoot = path.resolve(config.storageDir);
     let deletedCount = 0;
     let deletedBytes = 0;
 
-    // 1. Clear Videos in history
+    // 1. Clear Videos in history + sweep storage/videos and storage/exports (project-only)
     if (clearVideos !== false) {
       for (const item of items) {
-        if (item.filePath && fs.existsSync(item.filePath)) {
+        if (item.filePath && this._isPathInsideDir(item.filePath, storageRoot) && fs.existsSync(item.filePath)) {
           try {
             const stat = fs.statSync(item.filePath);
             deletedBytes += stat.size;
@@ -281,72 +360,38 @@ class HistoryService {
           }
         }
       }
+
+      const vidRes = this._clearDirectoryContents(this.videosDir, storageRoot);
+      const expRes = this._clearDirectoryContents(this.exportsDir, storageRoot);
+      deletedCount += vidRes.deletedCount + expRes.deletedCount;
+      deletedBytes += vidRes.deletedBytes + expRes.deletedBytes;
+
       this._writeHistoryFile([]);
     }
 
-    // 2. Clear Voices (storage/voices/*.mp3, *.wav, *.meta.json)
-    if (clearVoices !== false && fs.existsSync(this.voicesDir)) {
-      try {
-        const voiceFiles = fs.readdirSync(this.voicesDir);
-        for (const vf of voiceFiles) {
-          if (vf === '.gitkeep') continue;
-          const fullPath = path.join(this.voicesDir, vf);
-          try {
-            const stat = fs.statSync(fullPath);
-            if (stat.isFile()) {
-              deletedBytes += stat.size;
-              fs.unlinkSync(fullPath);
-              deletedCount++;
-            }
-          } catch (_) {}
-        }
-      } catch (err) {
-        formatTerminalLog('HISTORY:CLEAR_VOICES_ERR', `Failed to clear voices: ${err.message}`);
-      }
+    // 2. Clear Voices (storage/voices/*)
+    if (clearVoices !== false) {
+      const res = this._clearDirectoryContents(this.voicesDir, storageRoot);
+      deletedCount += res.deletedCount;
+      deletedBytes += res.deletedBytes;
     }
 
-    // 3. Clear Temp cache & stems (storage/temp/*)
-    if (clearTemp !== false && fs.existsSync(this.tempDir)) {
-      try {
-        const tempFiles = fs.readdirSync(this.tempDir);
-        for (const tf of tempFiles) {
-          if (tf === '.gitkeep') continue;
-          const fullPath = path.join(this.tempDir, tf);
-          try {
-            const stat = fs.statSync(fullPath);
-            if (stat.isFile()) {
-              deletedBytes += stat.size;
-              fs.unlinkSync(fullPath);
-              deletedCount++;
-            }
-          } catch (_) {}
-        }
-      } catch (err) {
-        formatTerminalLog('HISTORY:CLEAR_TEMP_ERR', `Failed to clear temp: ${err.message}`);
-      }
+    // 3. Clear Temp cache & stems including subfolders (storage/temp/*)
+    if (clearTemp !== false) {
+      const res = this._clearDirectoryContents(this.tempDir, storageRoot);
+      deletedCount += res.deletedCount;
+      deletedBytes += res.deletedBytes;
     }
 
-    // 4. Clear Projects if requested (storage/projects/*)
-    if (clearProjects !== false && fs.existsSync(this.projectsDir)) {
-      try {
-        const projFiles = fs.readdirSync(this.projectsDir);
-        for (const pf of projFiles) {
-          if (pf === '.gitkeep') continue;
-          const fullPath = path.join(this.projectsDir, pf);
-          try {
-            const stat = fs.statSync(fullPath);
-            if (stat.isFile()) {
-              deletedBytes += stat.size;
-              fs.unlinkSync(fullPath);
-              deletedCount++;
-            }
-          } catch (_) {}
-        }
-      } catch (_) {}
+    // 4. Clear Projects (storage/projects/*)
+    if (clearProjects !== false) {
+      const res = this._clearDirectoryContents(this.projectsDir, storageRoot);
+      deletedCount += res.deletedCount;
+      deletedBytes += res.deletedBytes;
     }
 
     const freedMb = Math.round((deletedBytes / (1024 * 1024)) * 100) / 100;
-    formatTerminalLog('HISTORY:CLEARED_ALL', `Deep cleaned storage: ${deletedCount} files deleted (${freedMb} MB freed)`);
+    formatTerminalLog('HISTORY:CLEARED_ALL', `Deep cleaned project storage: ${deletedCount} files deleted (${freedMb} MB freed)`);
     return {
       success: true,
       clearedCount: items.length,
@@ -356,4 +401,6 @@ class HistoryService {
   }
 }
 
-module.exports = new HistoryService();
+const instance = new HistoryService();
+instance.HistoryService = HistoryService;
+module.exports = instance;

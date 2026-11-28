@@ -31,8 +31,8 @@ async function runTests() {
   const workerFile = path.join(__dirname, '../src/workers/tts_worker.py');
   const workerCode = fs.readFileSync(workerFile, 'utf-8');
 
-  it('tts_worker.py supports adaptive speed headroom up to 1.85x', () => {
-    assert.ok(workerCode.includes('MAX_SPEED_CAP = max(1.05, min(2.00, float(os.environ.get("TTS_MAX_SPEED", "1.85") or 1.85)))'), 'Must support up to 1.85x adaptive speed headroom');
+  it('tts_worker.py caps adaptive speed headroom at 1.35x', () => {
+    assert.ok(workerCode.includes('MAX_SPEED_CAP = max(1.05, min(2.00, float(os.environ.get("TTS_MAX_SPEED", "1.35") or 1.35)))'), 'Must cap adaptive speed headroom at 1.35x');
   });
 
   const ttsServiceFile = path.join(__dirname, '../src/services/tts.service.js');

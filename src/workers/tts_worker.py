@@ -54,7 +54,7 @@ TOTAL_CORES = os.cpu_count() or 8
 NET_CONCURRENCY = max(8, int(os.environ.get("TTS_NET_CONCURRENCY", "24") or 24))
 CPU_CONCURRENCY = max(4, int(os.environ.get("TTS_CPU_CONCURRENCY", str(TOTAL_CORES)) or TOTAL_CORES))
 MAX_RETRIES = max(0, min(1, int(os.environ.get("TTS_MAX_RETRIES", "1") or 1)))
-MAX_SPEED_CAP = max(1.05, min(2.00, float(os.environ.get("TTS_MAX_SPEED", "1.85") or 1.85)))
+MAX_SPEED_CAP = max(1.05, min(2.00, float(os.environ.get("TTS_MAX_SPEED", "1.35") or 1.35)))
 SPEED_TOLERANCE_SEC = 0.20  # Allow natural breath overrun up to 200ms before forcing speed-up
 PROCESS_TIMEOUT = 120  # seconds before a helper binary is considered hung
 NET_TIMEOUT = max(8, min(20, int(os.environ.get("TTS_NET_TIMEOUT", "12") or 12)))  # seconds before websocket synthesis is considered hung
@@ -510,7 +510,7 @@ async def generate_single_item(item, output_dir, net_sem, cpu_sem, is_last=False
         # Auto-fit speech if spoken audio exceeds target duration beyond natural tolerance.
         if target_duration and target_duration > 0.4 and initial_duration > (target_duration + SPEED_TOLERANCE_SEC):
             needed_ratio = initial_duration / target_duration
-            # Cap speed ratio to prevent chipmunk / fast speech (supports up to 1.85x)
+            # Cap speed ratio to prevent chipmunk / fast speech (supports up to 1.35x)
             clamped_speed = round(min(MAX_SPEED_CAP, max(1.05, needed_ratio)), 2)
             async with cpu_sem:
                 if await apply_speed(out_path, clamped_speed):

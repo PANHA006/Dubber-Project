@@ -2,8 +2,11 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const { spawnSync } = require('child_process');
+const config = require('../config');
 const { formatTerminalLog, formatTerminalProgress } = require('../utils/terminal-logger');
 const groqKeyManager = require('./groq-key-manager.service');
+
+const STT_SPEECH_FILTER = 'aresample=async=1:first_pts=0,highpass=f=200,lowpass=f=3500,afftdn=nf=-25';
 
 /**
  * Format numeric seconds into standard SRT timestamp (00:00:01,234)
@@ -291,6 +294,72 @@ function mergeFragmentedSegments(segments, maxGap = 0.20, maxMergeCount = 3) {
   return merged;
 }
 
+/**
+ * Align every transcribed segment's startSec to the true human speech onset
+ * detected by Silero VAD, stripping leading background music / silence.
+ */
+function alignSegmentsToSpeechIntervals(segments, speechIntervals) {
+  if (!Array.isArray(segments) || segments.length === 0) return { segments: segments || [], anchoredCount: 0 };
+  if (!Array.isArray(speechIntervals) || speechIntervals.length === 0) return { segments, anchoredCount: 0 };
+
+  let anchoredCount = 0;
+  for (const seg of segments) {
+    if (typeof seg.startSec !== 'number' || typeof seg.endSec !== 'number') continue;
+
+    // Find first speech interval that overlaps this segment meaningfully
+    const match = speechIntervals.find(
+      (sp) => sp && typeof sp.start === 'number' && typeof sp.end === 'number'
+        && sp.end > seg.startSec + 0.05
+        && sp.start < seg.endSec - 0.15
+    );
+
+    if (match && match.start > seg.startSec + 0.08) {
+      seg.startSec = Math.round(match.start * 1000) / 1000;
+      anchoredCount++;
+    }
+  }
+
+  return { segments, anchoredCount };
+}
+
+/**
+ * Run local Silero VAD (via faster_whisper.vad, without loading a Whisper model)
+ * to extract true human speech intervals in seconds.
+ */
+function detectSpeechIntervalsWithSileroVad(audioPath, rawVadThreshold) {
+  if (!audioPath || !fs.existsSync(audioPath)) return [];
+
+  const pyPath = config.pythonPath;
+  if (!pyPath) return [];
+
+  const parsedThreshold = parseFloat(rawVadThreshold);
+  // UI default is 0.10 which is too permissive for BGM; enforce >= 0.30 for Groq anchoring
+  const threshold = Number.isFinite(parsedThreshold) ? Math.max(0.30, Math.min(0.90, parsedThreshold)) : 0.35;
+
+  const pyScript = [
+    'import json, sys',
+    'from faster_whisper.audio import decode_audio',
+    'from faster_whisper.vad import get_speech_timestamps, VadOptions',
+    'audio = decode_audio(sys.argv[1], sampling_rate=16000)',
+    'opts = VadOptions(threshold=float(sys.argv[2]), min_speech_duration_ms=150, min_silence_duration_ms=500, speech_pad_ms=120)',
+    'ts = get_speech_timestamps(audio, opts)',
+    'print(json.dumps([{"start": round(t["start"]/16000.0, 3), "end": round(t["end"]/16000.0, 3)} for t in ts]))'
+  ].join('; ');
+
+  const vadCheck = spawnSync(pyPath, ['-c', pyScript, audioPath, String(threshold)], {
+    timeout: 20000,
+    windowsHide: true
+  });
+
+  if (vadCheck.status !== 0) return [];
+  try {
+    const parsed = JSON.parse((vadCheck.stdout || '').toString().trim());
+    return Array.isArray(parsed) ? parsed : [];
+  } catch (_) {
+    return [];
+  }
+}
+
 class GroqService {
   /**
    * Transcribe an audio file using Groq Cloud Whisper API
@@ -322,32 +391,40 @@ class GroqService {
     let effectiveAudioPath = audioPath;
     let tempCompressedPath = null;
 
-    // Groq Cloud API payload limit is strictly 25 MB (HTTP 413: Request Entity Too Large).
-    // If input audio exceeds 20 MB, auto-compress to high-efficiency mono MP3 (48k/32k) via FFmpeg.
+    // Apply speech bandpass + noise reduction filter to attenuate background music before Groq STT.
+    // Also compress to lightweight mono MP3 if input exceeds Groq's 25MB limit (20MB threshold).
     const GROQ_MAX_FILE_BYTES = 20 * 1024 * 1024;
-    if (fileStats.size > GROQ_MAX_FILE_BYTES) {
-      tempCompressedPath = path.join(os.tmpdir(), `groq_compressed_${Date.now()}_${path.basename(audioPath)}.mp3`);
-      const targetBitrate = fileStats.size > 80 * 1024 * 1024 ? '32k' : '48k';
-      formatTerminalLog('GROQ:COMPRESS', `Audio size (${fileSizeMb} MB) exceeds Groq 25MB limit. Auto-compressing to lightweight MP3 (${targetBitrate})...`);
+    const needsCompression = fileStats.size > GROQ_MAX_FILE_BYTES;
+    const targetBitrate = fileStats.size > 80 * 1024 * 1024 ? '32k' : '48k';
+    const tempOutExt = needsCompression ? 'mp3' : 'wav';
+    tempCompressedPath = path.join(os.tmpdir(), `groq_stt_${Date.now()}_${path.basename(audioPath)}.${tempOutExt}`);
 
-      const compRes = spawnSync('ffmpeg', [
-        '-y',
-        '-i', audioPath,
-        '-vn',
-        '-ac', '1',
-        '-ar', '16000',
-        '-b:a', targetBitrate,
-        tempCompressedPath
-      ], { windowsHide: true });
+    const ffArgs = [
+      '-y',
+      '-i', audioPath,
+      '-vn',
+      '-ac', '1',
+      '-ar', '16000',
+      '-af', STT_SPEECH_FILTER,
+    ];
+    if (needsCompression) {
+      ffArgs.push('-b:a', targetBitrate);
+      formatTerminalLog('GROQ:COMPRESS', `Audio size (${fileSizeMb} MB) exceeds Groq 25MB limit. Applying speech filter & compressing to MP3 (${targetBitrate})...`);
+    } else {
+      ffArgs.push('-acodec', 'pcm_s16le');
+      formatTerminalLog('GROQ:FILTER', `Applying FFmpeg speech filter to reduce background music before Groq STT...`);
+    }
+    ffArgs.push(tempCompressedPath);
 
-      if (compRes.status === 0 && fs.existsSync(tempCompressedPath)) {
-        const compStats = fs.statSync(tempCompressedPath);
-        const compMb = (compStats.size / (1024 * 1024)).toFixed(2);
-        formatTerminalLog('GROQ:COMPRESS_OK', `Compressed: ${fileSizeMb} MB -> ${compMb} MB (Saved ${(((fileStats.size - compStats.size) / fileStats.size) * 100).toFixed(0)}%) - Ready for Groq Cloud`);
-        effectiveAudioPath = tempCompressedPath;
-      } else {
-        formatTerminalLog('GROQ:COMPRESS_WARN', `Compression note: ${compRes.stderr?.toString()?.slice(-200) || 'Proceeding with original'}`);
-      }
+    const compRes = spawnSync('ffmpeg', ffArgs, { windowsHide: true });
+
+    if (compRes.status === 0 && fs.existsSync(tempCompressedPath) && fs.statSync(tempCompressedPath).size > 0) {
+      const compStats = fs.statSync(tempCompressedPath);
+      const compMb = (compStats.size / (1024 * 1024)).toFixed(2);
+      formatTerminalLog('GROQ:FILTER_OK', `Prepared STT audio: ${fileSizeMb} MB -> ${compMb} MB (Speech-filtered)`);
+      effectiveAudioPath = tempCompressedPath;
+    } else {
+      formatTerminalLog('GROQ:FILTER_WARN', `Speech filter note: ${compRes.stderr?.toString()?.slice(-200) || 'Proceeding with original'}`);
     }
 
     const effectiveStats = fs.statSync(effectiveAudioPath);
@@ -513,20 +590,15 @@ class GroqService {
         }];
       }
 
-      // Robust Fallback: If cloud STT anchored Segment 1 to 0.00s (e.g. leading music/intro),
-      // use local VAD to anchor Segment 1 strictly to the moment human voice actually starts!
-      if (processedSegments.length > 0 && processedSegments[0].startSec < 0.5 && effectiveAudioPath && fs.existsSync(effectiveAudioPath)) {
+      // Direct Silero VAD Anchor across ALL segments: strip leading background music
+      // so every segment starts at the actual human speech onset.
+      if (processedSegments.length > 0 && effectiveAudioPath && fs.existsSync(effectiveAudioPath)) {
         try {
-          const pyPath = process.env.PYTHON_PATH || path.resolve(__dirname, '../../.venv/Scripts/python.exe');
-          if (fs.existsSync(pyPath)) {
-            const onsetPy = `import faster_whisper; m = faster_whisper.WhisperModel('tiny', device='cpu', compute_type='int8'); segs, _ = m.transcribe(r'${effectiveAudioPath}', vad_filter=True, word_timestamps=True); s = segs.__next__(); print(s.words[0].start if s.words else s.start)`;
-            const vadCheck = spawnSync(pyPath, ['-c', onsetPy], { timeout: 10000, windowsHide: true });
-            if (vadCheck.status === 0) {
-              const detectedOnset = parseFloat(vadCheck.stdout?.toString()?.trim());
-              if (!isNaN(detectedOnset) && detectedOnset > 0.5 && detectedOnset < processedSegments[0].endSec) {
-                formatTerminalLog('GROQ:VAD_ANCHOR', `🎯 Applied Local VAD Anchor: Corrected Segment 1 start from ${processedSegments[0].startSec}s -> ${detectedOnset.toFixed(2)}s`);
-                processedSegments[0].startSec = Math.round(detectedOnset * 1000) / 1000;
-              }
+          const speechIntervals = detectSpeechIntervalsWithSileroVad(effectiveAudioPath, options.vadThreshold);
+          if (speechIntervals.length > 0) {
+            const { anchoredCount } = alignSegmentsToSpeechIntervals(processedSegments, speechIntervals);
+            if (anchoredCount > 0) {
+              formatTerminalLog('GROQ:VAD_ANCHOR', `🎯 Applied Direct Silero VAD Anchor: Trimmed leading music/silence on ${anchoredCount}/${processedSegments.length} segments`);
             }
           }
         } catch (vadErr) {
@@ -568,5 +640,6 @@ class GroqService {
 }
 
 GroqService.prototype.processRawSegments = processRawSegments;
+GroqService.prototype.alignSegmentsToSpeechIntervals = alignSegmentsToSpeechIntervals;
 GroqService.prototype.keyManager = groqKeyManager;
 module.exports = new GroqService();

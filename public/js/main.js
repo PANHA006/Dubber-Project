@@ -582,6 +582,7 @@ async function executeVoiceGeneration(itemsToProcess, mode = 'all') {
   const btnRegenText = document.getElementById('regenerate-voice-text');
   const btnRetry = document.getElementById('btn-retry-failed-voice');
   const btnRetryText = document.getElementById('retry-failed-voice-text');
+  const btnCombo = document.getElementById('btn-generate-voice-video');
 
   const banner = document.getElementById('tts-progress-banner');
   const progressBar = document.getElementById('tts-progress-bar');
@@ -597,7 +598,7 @@ async function executeVoiceGeneration(itemsToProcess, mode = 'all') {
     state.isGeneratingVoice = true;
 
     // Disable all TTS buttons during processing
-    [btnGen, btnRegen, btnRetry].forEach(btn => {
+    [btnGen, btnRegen, btnRetry, btnCombo].forEach(btn => {
       if (btn) {
         btn.setAttribute('disabled', 'true');
         btn.classList.add('opacity-70', 'cursor-wait');
@@ -853,7 +854,7 @@ async function executeVoiceGeneration(itemsToProcess, mode = 'all') {
   } finally {
     state.isGeneratingVoice = false;
 
-    [btnGen, btnRegen, btnRetry].forEach(btn => {
+    [btnGen, btnRegen, btnRetry, btnCombo].forEach(btn => {
       if (btn) {
         btn.removeAttribute('disabled');
         btn.classList.remove('opacity-70', 'cursor-wait');
@@ -974,15 +975,18 @@ window.generateDubbedVideo = async function() {
 
   const btn = document.getElementById('btn-generate-video');
   const btnText = document.getElementById('generate-video-text');
+  const btnCombo = document.getElementById('btn-generate-voice-video');
   const banner = document.getElementById('video-render-progress-banner');
   const statusText = document.getElementById('video-render-status-text');
 
   try {
     state.isGeneratingVideo = true;
-    if (btn) {
-      btn.setAttribute('disabled', 'true');
-      btn.classList.add('opacity-70', 'cursor-wait');
-    }
+    [btn, btnCombo].forEach(b => {
+      if (b) {
+        b.setAttribute('disabled', 'true');
+        b.classList.add('opacity-70', 'cursor-wait');
+      }
+    });
     if (btnText) btnText.textContent = 'Rendering...';
     if (banner) banner.classList.remove('hidden');
     if (statusText) statusText.textContent = `កំពុងវិភាគ Settings & Render វីដេអូ Dubbed (${readyItems.length} វគ្គ)...`;
@@ -1055,12 +1059,76 @@ window.generateDubbedVideo = async function() {
     window.showToast?.(`❌ បរាជ័យក្នុងការបង្កើតវីដេអូ៖ ${err.message}`);
   } finally {
     state.isGeneratingVideo = false;
-    if (btn) {
-      btn.removeAttribute('disabled');
-      btn.classList.remove('opacity-70', 'cursor-wait');
-    }
+    [btn, btnCombo].forEach(b => {
+      if (b) {
+        b.removeAttribute('disabled');
+        b.classList.remove('opacity-70', 'cursor-wait');
+      }
+    });
     if (btnText) btnText.textContent = 'Generate Video';
     if (banner) banner.classList.add('hidden');
+  }
+};
+
+/**
+ * Combined 1-Click Pipeline: Generate Khmer Voice for all translated lines,
+ * verify all voices succeeded, then automatically render the final Dubbed Video.
+ */
+window.generateVoiceAndVideo = async function() {
+  if (state.isGeneratingVoice || state.isGeneratingVideo) return;
+
+  if (!state.videoUrl) {
+    window.showToast?.('⚠️ សូមបញ្ចូលវីដេអូជាមុនសិន! (Please import video first)');
+    return;
+  }
+
+  if (!state.subtitles || state.subtitles.length === 0) {
+    window.showToast?.('⚠️ មិនទាន់មាន Subtitles សម្រាប់បង្កើតសំឡេង និងវីដេអូទេ!');
+    return;
+  }
+
+  const validItems = state.subtitles.filter(s => (s.khmerText || '').trim().length > 0);
+  if (validItems.length === 0) {
+    window.showToast?.('⚠️ សូមចុច Translate ឬបញ្ចូលអត្ថបទខ្មែរជាមុនសិន!');
+    return;
+  }
+
+  const btnCombo = document.getElementById('btn-generate-voice-video');
+  const btnComboText = document.getElementById('generate-voice-video-text');
+
+  try {
+    if (btnCombo) {
+      btnCombo.setAttribute('disabled', 'true');
+      btnCombo.classList.add('opacity-70', 'cursor-wait');
+    }
+
+    // Step 1/2: Generate Voice
+    if (btnComboText) btnComboText.textContent = '1/2 Voice...';
+    window.showToast?.('🚀 [1/2] កំពុងបង្កើតសំឡេងខ្មែរ...');
+    logToTerminal('CLIENT:VOICE_VIDEO', `Step 1/2: Generating Khmer voices for ${validItems.length} rows...`);
+    await executeVoiceGeneration(validItems, 'all');
+
+    // Verify all valid rows have ready voice audio before rendering video
+    const missingAfterVoice = state.subtitles.filter(
+      s => (s.khmerText || '').trim().length > 0 && (!s.audioUrl || s.status !== 'Ready')
+    );
+    if (missingAfterVoice.length > 0) {
+      window.showToast?.(`⚠️ មាន ${missingAfterVoice.length} ជួរមិនទាន់មានសំឡេង Ready — សូមពិនិត្យមុនបង្កើតវីដេអូ!`);
+      logToTerminal('CLIENT:VOICE_VIDEO_WARN', `Aborted video render: ${missingAfterVoice.length} voice rows incomplete.`);
+      return;
+    }
+
+    // Step 2/2: Generate Video
+    if (btnComboText) btnComboText.textContent = '2/2 Video...';
+    window.showToast?.('🎬 [2/2] សំឡេងរួចរាល់! កំពុងបង្កើតវីដេអូ Dubbed...');
+    logToTerminal('CLIENT:VOICE_VIDEO', 'Step 2/2: Rendering dubbed video...');
+    await window.generateDubbedVideo();
+  } finally {
+    if (btnCombo) {
+      btnCombo.removeAttribute('disabled');
+      btnCombo.classList.remove('opacity-70', 'cursor-wait');
+    }
+    if (btnComboText) btnComboText.textContent = 'Voice + Video';
   }
 };
 
